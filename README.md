@@ -2,7 +2,7 @@
 
 A complete logging solution with SDK, server, and web UI for real-time log monitoring.
 
-![Trace Dock](https://via.placeholder.com/800x400/1a1a2e/ffffff?text=Trace+Dock)
+![Trace Dock](./images/trace-dock-example.png)
 
 ## ✨ Features
 
@@ -34,7 +34,7 @@ A complete logging solution with SDK, server, and web UI for real-time log monit
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/trace-dock.git
+git clone https://github.com/JeepayJipex/trace-dock.git
 cd trace-dock
 
 # Install dependencies
