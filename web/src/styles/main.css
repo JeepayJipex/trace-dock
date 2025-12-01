@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-debug: #6b7280;
+  --color-info: #3b82f6;
+  --color-warn: #f59e0b;
+  --color-error: #ef4444;
+}
+
+body {
+  @apply antialiased;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-dark-900;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-dark-700 rounded;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-dark-600;
+}
+
+/* Log level colors */
+.log-level-debug {
+  @apply text-gray-400 bg-gray-500/20;
+}
+
+.log-level-info {
+  @apply text-blue-400 bg-blue-500/20;
+}
+
+.log-level-warn {
+  @apply text-yellow-400 bg-yellow-500/20;
+}
+
+.log-level-error {
+  @apply text-red-400 bg-red-500/20;
+}
+
+/* Animation */
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Log entry animation */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.log-entry-new {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Stack trace formatting */
+.stack-trace {
+  @apply font-mono text-sm whitespace-pre-wrap break-all;
+}
+
+.stack-trace-line {
+  @apply block py-0.5;
+}
+
+.stack-trace-line:hover {
+  @apply bg-dark-700/50;
+}

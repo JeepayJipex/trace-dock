@@ -1,0 +1,30 @@
+{
+  "name": "trace-dock",
+  "version": "1.0.0",
+  "description": "A complete logging tool with SDK, server, and web UI",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:server": "turbo run dev --filter=@trace-dock/server",
+    "dev:web": "turbo run dev --filter=@trace-dock/web",
+    "build": "turbo run build",
+    "build:sdk": "turbo run build --filter=@trace-dock/sdk",
+    "build:server": "turbo run build --filter=@trace-dock/server",
+    "build:web": "turbo run build --filter=@trace-dock/web",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules .turbo",
+    "docker:up": "docker-compose up -d --build",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.0"
+}

@@ -1,0 +1,61 @@
+{
+  "name": "@trace-dock/sdk",
+  "version": "0.1.0",
+  "description": "JavaScript/TypeScript SDK for trace-dock logging - Universal logger with HTTP/WebSocket transport",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "lint": "eslint src/",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "pnpm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3"
+  },
+  "keywords": [
+    "logging",
+    "logger",
+    "trace-dock",
+    "observability",
+    "debug",
+    "tracing",
+    "monitoring",
+    "typescript",
+    "nodejs",
+    "browser",
+    "tauri"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JeepayJipex/trace-dock.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/JeepayJipex/trace-dock#readme",
+  "bugs": {
+    "url": "https://github.com/JeepayJipex/trace-dock/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "sideEffects": false
+}
