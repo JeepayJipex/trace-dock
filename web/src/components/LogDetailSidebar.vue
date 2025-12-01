@@ -10,6 +10,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   navigate: ['prev' | 'next'];
+  filter: [key: string, value: string];
 }>();
 
 const activeTab = ref<'overview' | 'metadata' | 'stack' | 'environment'>('overview');
@@ -91,6 +92,10 @@ function copyLogAsJson() {
     copyToClipboard(JSON.stringify(props.log, null, 2));
   }
 }
+
+function handleFilterClick(key: string, value: string) {
+  emit('filter', key, value);
+}
 </script>
 
 <template>
@@ -120,14 +125,22 @@ function copyLogAsJson() {
             
             <div class="min-w-0">
               <div class="flex items-center gap-2">
-                <span 
+                <button 
                   v-if="levelConfig"
-                  :class="['text-sm font-medium uppercase', levelConfig.textClass]"
+                  @click="handleFilterClick('level', log.level)"
+                  :class="['text-sm font-medium uppercase hover:underline', levelConfig.textClass]"
+                  title="Click to filter by level"
                 >
                   {{ log.level }}
-                </span>
+                </button>
                 <span class="text-gray-500">•</span>
-                <span class="text-purple-400 text-sm font-medium">{{ log.appName }}</span>
+                <button 
+                  @click="handleFilterClick('appName', log.appName)"
+                  class="text-purple-400 text-sm font-medium hover:text-purple-300 hover:underline"
+                  title="Click to filter by app"
+                >
+                  {{ log.appName }}
+                </button>
               </div>
               <p class="text-gray-400 text-xs mt-1">{{ formatFullTime(log.timestamp) }}</p>
             </div>
@@ -232,9 +245,13 @@ function copyLogAsJson() {
             <div class="grid grid-cols-2 gap-3">
               <div class="bg-dark-800/50 rounded-lg p-3 border border-dark-700/50">
                 <p class="text-gray-500 text-xs mb-1">Session ID</p>
-                <p class="text-gray-300 text-sm font-mono truncate" :title="log.sessionId">
+                <button 
+                  @click="handleFilterClick('sessionId', log.sessionId)"
+                  class="text-gray-300 text-sm font-mono truncate hover:text-blue-400 hover:underline text-left w-full" 
+                  :title="`Click to filter by session: ${log.sessionId}`"
+                >
                   {{ log.sessionId }}
-                </p>
+                </button>
               </div>
               <div class="bg-dark-800/50 rounded-lg p-3 border border-dark-700/50">
                 <p class="text-gray-500 text-xs mb-1">Log ID</p>
@@ -257,13 +274,18 @@ function copyLogAsJson() {
               </button>
             </div>
             <div class="flex flex-wrap gap-2">
-              <span
+              <button
                 v-for="(value, key) in Object.entries(log.metadata).slice(0, 6)"
                 :key="key"
-                class="bg-dark-700/50 text-gray-400 px-2.5 py-1 rounded text-xs font-mono"
+                @click="typeof value[1] !== 'object' && handleFilterClick(String(value[0]), String(value[1]))"
+                :class="[
+                  'bg-dark-700/50 text-gray-400 px-2.5 py-1 rounded text-xs font-mono transition-colors',
+                  typeof value[1] !== 'object' ? 'hover:bg-dark-600/50 hover:text-blue-400 cursor-pointer' : ''
+                ]"
+                :title="typeof value[1] !== 'object' ? `Click to search ${value[0]}:${value[1]}` : undefined"
               >
                 {{ value[0] }}: {{ typeof value[1] === 'object' ? '{...}' : String(value[1]).slice(0, 20) }}
-              </span>
+              </button>
               <span 
                 v-if="Object.keys(log.metadata).length > 6"
                 class="text-gray-500 text-xs px-2.5 py-1"
@@ -306,7 +328,14 @@ function copyLogAsJson() {
                     v-if="typeof value === 'object'" 
                     class="text-gray-200 text-sm font-mono overflow-x-auto"
                   >{{ JSON.stringify(value, null, 2) }}</pre>
-                  <p v-else class="text-gray-200 text-sm font-mono break-all">{{ value }}</p>
+                  <button 
+                    v-else 
+                    @click="handleFilterClick(String(key), String(value))"
+                    class="text-gray-200 text-sm font-mono break-all hover:text-blue-400 hover:underline text-left"
+                    :title="`Click to search ${key}:${value}`"
+                  >
+                    {{ value }}
+                  </button>
                 </div>
                 <button 
                   @click="copyToClipboard(typeof value === 'object' ? JSON.stringify(value) : String(value))"

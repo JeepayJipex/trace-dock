@@ -54,3 +54,13 @@ export async function getSessions(appName?: string): Promise<{ sessions: string[
   const params = appName ? `?appName=${encodeURIComponent(appName)}` : '';
   return fetchJson<{ sessions: string[] }>(`${API_BASE}/sessions${params}`);
 }
+
+export async function getSearchSuggestions(prefix: string): Promise<{ suggestions: { type: string; value: string }[] }> {
+  return fetchJson<{ suggestions: { type: string; value: string }[] }>(
+    `${API_BASE}/suggestions?q=${encodeURIComponent(prefix)}`
+  );
+}
+
+export async function getMetadataKeys(): Promise<{ keys: string[] }> {
+  return fetchJson<{ keys: string[] }>(`${API_BASE}/metadata-keys`);
+}

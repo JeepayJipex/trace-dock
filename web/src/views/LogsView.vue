@@ -4,7 +4,7 @@ import { getLogs, getApps, getSessions } from '@/api/logs';
 import { useWebSocket } from '@/composables/useWebSocket';
 import type { LogEntry, LogFilters } from '@/types';
 import LogList from '@/components/LogList.vue';
-import LogFiltersPanel from '@/components/LogFiltersPanel.vue';
+import SearchBar from '@/components/SearchBar.vue';
 import LogDetailSidebar from '@/components/LogDetailSidebar.vue';
 
 const logs = ref<LogEntry[]>([]);
@@ -19,6 +19,7 @@ const apps = ref<string[]>([]);
 const sessions = ref<string[]>([]);
 
 const selectedLog = ref<LogEntry | null>(null);
+const searchBarRef = ref<InstanceType<typeof SearchBar> | null>(null);
 
 // WebSocket for live updates
 const { isConnected, isLiveMode, toggleLiveMode } = useWebSocket((log: LogEntry) => {
@@ -106,6 +107,13 @@ function navigateLog(direction: 'prev' | 'next') {
   }
 }
 
+// Handle filter clicks from LogCard/LogList
+function handleAddFilter(key: string, value: string) {
+  if (searchBarRef.value) {
+    searchBarRef.value.addFilter(key, value);
+  }
+}
+
 // Watch for app filter changes to update sessions
 watch(() => filters.value.appName, () => {
   fetchSessions();
@@ -186,11 +194,12 @@ onMounted(() => {
     </div>
 
     <!-- Filters -->
-    <LogFiltersPanel
+    <SearchBar
+      ref="searchBarRef"
+      v-model="filters"
       :apps="apps"
       :sessions="sessions"
-      :initial-filters="filters"
-      @filter="handleFilterChange"
+      @update:model-value="handleFilterChange"
     />
 
     <!-- Error -->
@@ -212,6 +221,7 @@ onMounted(() => {
       :selected-log-id="selectedLog?.id"
       @load-more="loadMore"
       @log-click="handleLogClick"
+      @filter="handleAddFilter"
     />
 
     <!-- Detail Sidebar -->
@@ -219,6 +229,7 @@ onMounted(() => {
       :log="selectedLog"
       @close="closeSidebar"
       @navigate="navigateLog"
+      @filter="handleAddFilter"
     />
   </div>
 </template>

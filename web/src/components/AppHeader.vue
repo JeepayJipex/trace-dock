@@ -17,13 +17,22 @@ const connectionStatusClass = computed(() => {
       <div class="flex items-center justify-between h-16">
         <!-- Logo -->
         <RouterLink to="/" class="flex items-center space-x-3">
-          <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
+          <svg class="w-8 h-8" viewBox="0 0 100 100">
+            <defs>
+              <linearGradient id="header-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+              </linearGradient>
+            </defs>
+            <rect x="10" y="20" width="80" height="60" rx="8" fill="url(#header-grad)" />
+            <rect x="18" y="30" width="30" height="4" rx="2" fill="white" opacity="0.9"/>
+            <rect x="18" y="40" width="50" height="4" rx="2" fill="white" opacity="0.7"/>
+            <rect x="18" y="50" width="40" height="4" rx="2" fill="white" opacity="0.5"/>
+            <rect x="18" y="60" width="55" height="4" rx="2" fill="white" opacity="0.3"/>
+            <circle cx="78" cy="32" r="6" fill="#10b981"/>
+          </svg>
           <span class="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-            Trace Dock
+            TraceDock
           </span>
         </RouterLink>
 

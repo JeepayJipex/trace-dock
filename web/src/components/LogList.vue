@@ -12,6 +12,7 @@ defineProps<{
 const emit = defineEmits<{
   loadMore: [];
   logClick: [log: LogEntry];
+  filter: [key: string, value: string];
 }>();
 </script>
 
@@ -24,6 +25,7 @@ const emit = defineEmits<{
       :log="log"
       :is-selected="selectedLogId === log.id"
       @select="emit('logClick', $event)"
+      @filter="(key, value) => emit('filter', key, value)"
       class="log-entry-new"
     />
 

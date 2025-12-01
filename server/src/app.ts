@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { env } from 'hono/adapter';
 import { LogEntrySchema, LogQuerySchema } from './schemas';
-import { insertLogEntry, getLogs, getLogById, getStats, getAppNames, getSessionIds } from './db';
+import { insertLogEntry, getLogs, getLogById, getStats, getAppNames, getSessionIds, getSearchSuggestions, getMetadataKeys } from './db';
 import { wsManager } from './websocket';
 
 // Default allowed origins for development
@@ -167,6 +167,29 @@ app.get('/sessions', async (c) => {
     return c.json({ sessions });
   } catch (error) {
     console.error('Error fetching sessions:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Get search suggestions for autocomplete
+app.get('/suggestions', async (c) => {
+  try {
+    const prefix = c.req.query('q') || '';
+    const suggestions = getSearchSuggestions(prefix);
+    return c.json({ suggestions });
+  } catch (error) {
+    console.error('Error fetching suggestions:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Get metadata keys for search help
+app.get('/metadata-keys', async (c) => {
+  try {
+    const keys = getMetadataKeys();
+    return c.json({ keys });
+  } catch (error) {
+    console.error('Error fetching metadata keys:', error);
     return c.json({ error: 'Internal server error' }, 500);
   }
 });

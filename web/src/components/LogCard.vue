@@ -10,6 +10,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [log: LogEntry];
+  filter: [key: string, value: string];
 }>();
 
 const isExpanded = ref(false);
@@ -21,7 +22,7 @@ const levelConfig = computed(() => {
       bgClass: 'bg-red-500/10',
       borderClass: 'border-red-500/30',
       textClass: 'text-red-400',
-      badgeClass: 'bg-red-500/20 text-red-400',
+      badgeClass: 'bg-red-500/20 text-red-400 hover:bg-red-500/30',
       dotClass: 'bg-red-500',
     },
     warn: {
@@ -29,7 +30,7 @@ const levelConfig = computed(() => {
       bgClass: 'bg-orange-500/10',
       borderClass: 'border-orange-500/30',
       textClass: 'text-orange-400',
-      badgeClass: 'bg-orange-500/20 text-orange-400',
+      badgeClass: 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30',
       dotClass: 'bg-orange-500',
     },
     info: {
@@ -37,7 +38,7 @@ const levelConfig = computed(() => {
       bgClass: 'bg-blue-500/10',
       borderClass: 'border-blue-500/30',
       textClass: 'text-blue-400',
-      badgeClass: 'bg-blue-500/20 text-blue-400',
+      badgeClass: 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30',
       dotClass: 'bg-blue-500',
     },
     debug: {
@@ -45,7 +46,7 @@ const levelConfig = computed(() => {
       bgClass: 'bg-purple-500/10',
       borderClass: 'border-purple-500/30',
       textClass: 'text-purple-400',
-      badgeClass: 'bg-purple-500/20 text-purple-400',
+      badgeClass: 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30',
       dotClass: 'bg-purple-500',
     },
   };
@@ -87,6 +88,11 @@ function toggleExpand(event: MouseEvent) {
 function handleClick() {
   emit('select', props.log);
 }
+
+function handleFilterClick(event: MouseEvent, key: string, value: string) {
+  event.stopPropagation();
+  emit('filter', key, value);
+}
 </script>
 
 <template>
@@ -111,15 +117,17 @@ function handleClick() {
         <div class="flex-1 min-w-0">
           <!-- Line 1: Level badge, Message, Timestamp -->
           <div class="flex items-center gap-3 flex-wrap">
-            <span
+            <button
+              @click="(e) => handleFilterClick(e, 'level', log.level)"
               :class="[
-                'inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium uppercase',
+                'inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium uppercase transition-colors',
                 levelConfig.badgeClass
               ]"
+              title="Click to filter by level"
             >
               <span v-html="levelConfig.icon" :class="levelConfig.textClass"></span>
               {{ log.level }}
-            </span>
+            </button>
             
             <span class="text-white font-medium truncate flex-1">
               {{ truncatedMessage }}
@@ -134,10 +142,22 @@ function handleClick() {
           </div>
 
           <!-- Line 2: App, Session, Environment, Tags -->
-          <div class="flex items-center gap-2 mt-1.5 text-xs">
-            <span class="text-purple-400 font-medium">{{ log.appName }}</span>
+          <div class="flex items-center gap-2 mt-1.5 text-xs flex-wrap">
+            <button 
+              @click="(e) => handleFilterClick(e, 'appName', log.appName)"
+              class="text-purple-400 font-medium hover:text-purple-300 hover:underline transition-colors"
+              title="Click to filter by app"
+            >
+              {{ log.appName }}
+            </button>
             <span class="text-dark-500">•</span>
-            <span class="text-gray-500">{{ log.sessionId.slice(0, 8) }}</span>
+            <button 
+              @click="(e) => handleFilterClick(e, 'sessionId', log.sessionId)"
+              class="text-gray-500 hover:text-gray-300 hover:underline transition-colors font-mono"
+              title="Click to filter by session"
+            >
+              {{ log.sessionId.slice(0, 8) }}
+            </button>
             <span class="text-dark-500">•</span>
             <span class="text-gray-600">{{ log.environment.type }}</span>
             
@@ -149,10 +169,26 @@ function handleClick() {
               Stack
             </span>
             
-            <!-- Metadata indicator -->
-            <span v-if="log.metadata && Object.keys(log.metadata).length > 0" class="text-gray-500">
-              +{{ Object.keys(log.metadata).length }} fields
-            </span>
+            <!-- Metadata preview tags (clickable) -->
+            <template v-if="log.metadata && Object.keys(log.metadata).length > 0">
+              <span class="text-dark-500">•</span>
+              <button
+                v-for="(value, key) in Object.entries(log.metadata).slice(0, 3)"
+                :key="key"
+                @click="(e) => handleFilterClick(e, String(value[0]), String(value[1]))"
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-dark-700/50 text-gray-400 hover:bg-dark-600/50 hover:text-gray-300 transition-colors font-mono"
+                :title="`Click to search ${value[0]}:${value[1]}`"
+              >
+                <span class="text-gray-500">{{ value[0] }}:</span>
+                <span class="max-w-[80px] truncate">{{ typeof value[1] === 'object' ? '{...}' : String(value[1]) }}</span>
+              </button>
+              <span 
+                v-if="Object.keys(log.metadata).length > 3" 
+                class="text-gray-600"
+              >
+                +{{ Object.keys(log.metadata).length - 3 }}
+              </span>
+            </template>
           </div>
         </div>
 
@@ -195,10 +231,27 @@ function handleClick() {
             </p>
           </div>
 
-          <!-- Metadata -->
+          <!-- Metadata (clickable values) -->
           <div v-if="log.metadata && Object.keys(log.metadata).length > 0">
             <h4 class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Metadata</h4>
-            <pre class="text-gray-300 text-sm font-mono bg-dark-800/50 rounded-lg p-3 overflow-x-auto">{{ JSON.stringify(log.metadata, null, 2) }}</pre>
+            <div class="bg-dark-800/50 rounded-lg p-3 space-y-1">
+              <div 
+                v-for="(value, key) in log.metadata" 
+                :key="key"
+                class="flex items-start gap-2 text-sm font-mono"
+              >
+                <span class="text-gray-500 flex-shrink-0">{{ key }}:</span>
+                <button
+                  v-if="typeof value !== 'object'"
+                  @click="(e) => handleFilterClick(e, String(key), String(value))"
+                  class="text-gray-300 hover:text-blue-400 hover:underline transition-colors text-left break-all"
+                  :title="`Click to search ${key}:${value}`"
+                >
+                  {{ value }}
+                </button>
+                <pre v-else class="text-gray-300 overflow-x-auto">{{ JSON.stringify(value, null, 2) }}</pre>
+              </div>
+            </div>
           </div>
 
           <!-- Stack Trace -->
