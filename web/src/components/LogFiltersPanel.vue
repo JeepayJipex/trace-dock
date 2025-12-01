@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue';
 import type { LogFilters, LogLevel } from '@/types';
 
-defineProps<{
+const props = defineProps<{
   apps: string[];
   sessions: string[];
   initialFilters: LogFilters;
@@ -12,12 +12,12 @@ const emit = defineEmits<{
   filter: [filters: LogFilters];
 }>();
 
-const level = ref<LogLevel | ''>('');
-const appName = ref('');
-const sessionId = ref('');
-const search = ref('');
-const startDate = ref('');
-const endDate = ref('');
+const level = ref<LogLevel | ''>(props.initialFilters.level || '');
+const appName = ref(props.initialFilters.appName || '');
+const sessionId = ref(props.initialFilters.sessionId || '');
+const search = ref(props.initialFilters.search || '');
+const startDate = ref(props.initialFilters.startDate ? props.initialFilters.startDate.slice(0, 16) : '');
+const endDate = ref(props.initialFilters.endDate ? props.initialFilters.endDate.slice(0, 16) : '');
 
 const levels: LogLevel[] = ['debug', 'info', 'warn', 'error'];
 
@@ -34,7 +34,7 @@ function applyFilters() {
   emit('filter', filters);
 }
 
-function clearFilters() {
+function resetFilters() {
   level.value = '';
   appName.value = '';
   sessionId.value = '';
@@ -113,13 +113,13 @@ watch(search, () => {
         </select>
       </div>
 
-      <!-- Clear Button -->
+      <!-- Reset Button -->
       <div class="flex items-end">
         <button
-          @click="clearFilters"
+          @click="resetFilters"
           class="w-full bg-dark-700 hover:bg-dark-600 text-gray-300 px-4 py-2 rounded-lg transition-colors"
         >
-          Clear
+          Reset
         </button>
       </div>
     </div>

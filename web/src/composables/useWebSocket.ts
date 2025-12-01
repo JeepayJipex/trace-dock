@@ -11,6 +11,14 @@ interface WebSocketMessage {
 // WebSocket URL configurable via env variable
 function getWebSocketUrl(): string {
   const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+  
+  // If it's a relative path (e.g., /api), use current host
+  if (baseUrl.startsWith('/')) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // For /api, WebSocket is at /live (nginx proxies it)
+    return `${protocol}//${window.location.host}/live`;
+  }
+  
   // Convert http(s) to ws(s)
   const wsUrl = baseUrl.replace(/^http/, 'ws');
   return `${wsUrl}/live`;

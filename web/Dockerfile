@@ -19,10 +19,8 @@ COPY --from=deps /app/web/node_modules ./web/node_modules
 COPY . .
 
 # Build the web app
-ARG VITE_API_URL
-ARG VITE_WS_URL
-ENV VITE_API_URL=${VITE_API_URL}
-ENV VITE_WS_URL=${VITE_WS_URL}
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 
 RUN pnpm --filter @trace-dock/web build
 
