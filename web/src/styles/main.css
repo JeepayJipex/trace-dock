@@ -2,15 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import JetBrains Mono for code/logs */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 :root {
-  --color-debug: #6b7280;
+  --color-debug: #a78bfa;
   --color-info: #3b82f6;
-  --color-warn: #f59e0b;
+  --color-warn: #f97316;
   --color-error: #ef4444;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 body {
   @apply antialiased;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+}
+
+/* Apply monospace font to code elements */
+pre, code, .font-mono {
+  font-family: var(--font-mono);
 }
 
 /* Scrollbar styling */
@@ -24,37 +34,39 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-dark-700 rounded;
+  @apply bg-dark-600 rounded-full;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-dark-600;
+  @apply bg-dark-500;
 }
 
-/* Log level colors */
+/* Log level colors - Enhanced */
 .log-level-debug {
-  @apply text-gray-400 bg-gray-500/20;
+  @apply text-purple-400 bg-purple-500/15 border border-purple-500/30;
 }
 
 .log-level-info {
-  @apply text-blue-400 bg-blue-500/20;
+  @apply text-blue-400 bg-blue-500/15 border border-blue-500/30;
 }
 
 .log-level-warn {
-  @apply text-yellow-400 bg-yellow-500/20;
+  @apply text-orange-400 bg-orange-500/15 border border-orange-500/30;
 }
 
 .log-level-error {
-  @apply text-red-400 bg-red-500/20;
+  @apply text-red-400 bg-red-500/15 border border-red-500/30;
 }
 
 /* Animation */
 @keyframes pulse-dot {
   0%, 100% {
     opacity: 1;
+    transform: scale(1);
   }
   50% {
-    opacity: 0.5;
+    opacity: 0.7;
+    transform: scale(1.1);
   }
 }
 
@@ -66,7 +78,7 @@ body {
 @keyframes slideIn {
   from {
     opacity: 0;
-    transform: translateY(-10px);
+    transform: translateY(-8px);
   }
   to {
     opacity: 1;
@@ -75,18 +87,56 @@ body {
 }
 
 .log-entry-new {
-  animation: slideIn 0.3s ease-out;
+  animation: slideIn 0.2s ease-out;
 }
 
 /* Stack trace formatting */
 .stack-trace {
-  @apply font-mono text-sm whitespace-pre-wrap break-all;
+  font-family: var(--font-mono);
+  @apply text-sm whitespace-pre-wrap break-all leading-relaxed;
 }
 
 .stack-trace-line {
-  @apply block py-0.5;
+  @apply block py-0.5 px-2 -mx-2 rounded;
 }
 
 .stack-trace-line:hover {
   @apply bg-dark-700/50;
+}
+
+/* Custom focus styles */
+input:focus, select:focus, button:focus-visible {
+  @apply outline-none ring-2 ring-blue-500/50;
+}
+
+/* Dark theme form elements */
+select {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
+
+/* Smooth transitions for interactive elements */
+button, a, input, select {
+  @apply transition-all duration-150;
+}
+
+/* Custom scrollbar for code blocks */
+pre::-webkit-scrollbar {
+  height: 6px;
+}
+
+pre::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+pre::-webkit-scrollbar-thumb {
+  @apply bg-dark-600 rounded-full;
+}
+
+/* Tabular numbers for timestamps */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }

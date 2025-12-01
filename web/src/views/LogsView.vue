@@ -5,7 +5,7 @@ import { useWebSocket } from '@/composables/useWebSocket';
 import type { LogEntry, LogFilters } from '@/types';
 import LogList from '@/components/LogList.vue';
 import LogFiltersPanel from '@/components/LogFiltersPanel.vue';
-import LogDetailModal from '@/components/LogDetailModal.vue';
+import LogDetailSidebar from '@/components/LogDetailSidebar.vue';
 
 const logs = ref<LogEntry[]>([]);
 const total = ref(0);
@@ -19,7 +19,6 @@ const apps = ref<string[]>([]);
 const sessions = ref<string[]>([]);
 
 const selectedLog = ref<LogEntry | null>(null);
-const showDetailModal = ref(false);
 
 // WebSocket for live updates
 const { isConnected, isLiveMode, toggleLiveMode } = useWebSocket((log: LogEntry) => {
@@ -29,6 +28,11 @@ const { isConnected, isLiveMode, toggleLiveMode } = useWebSocket((log: LogEntry)
 });
 
 const hasMore = computed(() => logs.value.length < total.value);
+
+const selectedLogIndex = computed(() => {
+  if (!selectedLog.value) return -1;
+  return logs.value.findIndex(l => l.id === selectedLog.value?.id);
+});
 
 async function fetchLogs(append = false) {
   loading.value = true;
@@ -85,12 +89,21 @@ function handleFilterChange(newFilters: LogFilters) {
 
 function handleLogClick(log: LogEntry) {
   selectedLog.value = log;
-  showDetailModal.value = true;
 }
 
-function closeModal() {
-  showDetailModal.value = false;
+function closeSidebar() {
   selectedLog.value = null;
+}
+
+function navigateLog(direction: 'prev' | 'next') {
+  const currentIndex = selectedLogIndex.value;
+  if (currentIndex === -1) return;
+  
+  if (direction === 'prev' && currentIndex > 0) {
+    selectedLog.value = logs.value[currentIndex - 1];
+  } else if (direction === 'next' && currentIndex < logs.value.length - 1) {
+    selectedLog.value = logs.value[currentIndex + 1];
+  }
 }
 
 // Watch for app filter changes to update sessions
@@ -98,10 +111,26 @@ watch(() => filters.value.appName, () => {
   fetchSessions();
 });
 
+// Keyboard navigation
+function handleKeydown(event: KeyboardEvent) {
+  if (!selectedLog.value) return;
+  
+  if (event.key === 'Escape') {
+    closeSidebar();
+  } else if (event.key === 'ArrowUp' || event.key === 'k') {
+    event.preventDefault();
+    navigateLog('prev');
+  } else if (event.key === 'ArrowDown' || event.key === 'j') {
+    event.preventDefault();
+    navigateLog('next');
+  }
+}
+
 onMounted(() => {
   fetchLogs();
   fetchApps();
   fetchSessions();
+  window.addEventListener('keydown', handleKeydown);
 });
 </script>
 
@@ -111,30 +140,47 @@ onMounted(() => {
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold text-white">Logs</h1>
-        <p class="text-gray-400 text-sm mt-1">
-          {{ total.toLocaleString() }} logs total
+        <p class="text-gray-500 text-sm mt-1">
+          <span class="text-gray-400 font-medium">{{ total.toLocaleString() }}</span> logs total
         </p>
       </div>
       
-      <div class="flex items-center space-x-4">
+      <div class="flex items-center gap-3">
         <!-- Live Mode Toggle -->
         <button
           @click="toggleLiveMode"
           :class="[
-            'flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors',
+            'flex items-center gap-2 px-4 py-2 rounded-lg transition-all font-medium text-sm',
             isLiveMode
-              ? 'bg-green-500/20 text-green-400 border border-green-500/50'
-              : 'bg-dark-800 text-gray-400 border border-dark-700'
+              ? 'bg-green-500/15 text-green-400 border border-green-500/30 hover:bg-green-500/20'
+              : 'bg-dark-800/50 text-gray-400 border border-dark-700/50 hover:bg-dark-700/50'
           ]"
         >
-          <span :class="['w-2 h-2 rounded-full', isLiveMode ? 'bg-green-500 animate-pulse-dot' : 'bg-gray-500']"></span>
-          <span>{{ isLiveMode ? 'Live' : 'Paused' }}</span>
+          <span 
+            :class="[
+              'w-2 h-2 rounded-full transition-all',
+              isLiveMode ? 'bg-green-500 animate-pulse-dot' : 'bg-gray-500'
+            ]"
+          ></span>
+          {{ isLiveMode ? 'Live' : 'Paused' }}
         </button>
         
         <!-- Connection Status -->
-        <div class="flex items-center space-x-2 text-sm">
-          <span :class="['w-2 h-2 rounded-full', isConnected ? 'bg-green-500' : 'bg-red-500']"></span>
-          <span class="text-gray-400">{{ isConnected ? 'Connected' : 'Disconnected' }}</span>
+        <div 
+          :class="[
+            'flex items-center gap-2 px-3 py-2 rounded-lg text-sm',
+            isConnected 
+              ? 'bg-dark-800/30 text-gray-400' 
+              : 'bg-red-500/10 text-red-400 border border-red-500/20'
+          ]"
+        >
+          <span 
+            :class="[
+              'w-2 h-2 rounded-full',
+              isConnected ? 'bg-green-500' : 'bg-red-500'
+            ]"
+          ></span>
+          {{ isConnected ? 'Connected' : 'Disconnected' }}
         </div>
       </div>
     </div>
@@ -148,8 +194,14 @@ onMounted(() => {
     />
 
     <!-- Error -->
-    <div v-if="error" class="bg-red-500/20 border border-red-500/50 text-red-400 p-4 rounded-lg">
-      {{ error }}
+    <div 
+      v-if="error" 
+      class="flex items-center gap-3 bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl"
+    >
+      <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+      </svg>
+      <span>{{ error }}</span>
     </div>
 
     <!-- Logs List -->
@@ -157,15 +209,16 @@ onMounted(() => {
       :logs="logs"
       :loading="loading"
       :has-more="hasMore"
+      :selected-log-id="selectedLog?.id"
       @load-more="loadMore"
       @log-click="handleLogClick"
     />
 
-    <!-- Detail Modal -->
-    <LogDetailModal
-      v-if="showDetailModal && selectedLog"
+    <!-- Detail Sidebar -->
+    <LogDetailSidebar
       :log="selectedLog"
-      @close="closeModal"
+      @close="closeSidebar"
+      @navigate="navigateLog"
     />
   </div>
 </template>

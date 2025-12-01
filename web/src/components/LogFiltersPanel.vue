@@ -19,7 +19,16 @@ const search = ref(props.initialFilters.search || '');
 const startDate = ref(props.initialFilters.startDate ? props.initialFilters.startDate.slice(0, 16) : '');
 const endDate = ref(props.initialFilters.endDate ? props.initialFilters.endDate.slice(0, 16) : '');
 
-const levels: LogLevel[] = ['debug', 'info', 'warn', 'error'];
+const levels: { value: LogLevel; label: string; icon: string }[] = [
+  { value: 'error', label: 'Error', icon: '🔴' },
+  { value: 'warn', label: 'Warn', icon: '🟠' },
+  { value: 'info', label: 'Info', icon: '🔵' },
+  { value: 'debug', label: 'Debug', icon: '🟣' },
+];
+
+const hasActiveFilters = () => {
+  return level.value || appName.value || sessionId.value || search.value || startDate.value || endDate.value;
+};
 
 function applyFilters() {
   const filters: LogFilters = {};
@@ -55,43 +64,55 @@ watch(search, () => {
 </script>
 
 <template>
-  <div class="bg-dark-900 border border-dark-700 rounded-lg p-4">
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-      <!-- Search -->
-      <div class="lg:col-span-2">
-        <label class="block text-sm font-medium text-gray-400 mb-1">Search</label>
+  <div class="bg-dark-900/50 border border-dark-700/50 rounded-xl p-5 space-y-4">
+    <!-- Row 1: Search (full width) -->
+    <div>
+      <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+        Search
+      </label>
+      <div class="relative">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
         <input
           v-model="search"
           type="text"
-          placeholder="Search logs..."
-          class="w-full bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="Search in messages, metadata, stack traces..."
+          class="w-full bg-dark-800/50 border border-dark-600/50 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all"
         />
       </div>
+    </div>
 
+    <!-- Row 2: Level | App | Session -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <!-- Level -->
       <div>
-        <label class="block text-sm font-medium text-gray-400 mb-1">Level</label>
+        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+          Level
+        </label>
         <select
           v-model="level"
           @change="applyFilters"
-          class="w-full bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          class="w-full bg-dark-800/50 border border-dark-600/50 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all appearance-none cursor-pointer"
         >
           <option value="">All levels</option>
-          <option v-for="l in levels" :key="l" :value="l" class="capitalize">
-            {{ l }}
+          <option v-for="l in levels" :key="l.value" :value="l.value">
+            {{ l.icon }} {{ l.label }}
           </option>
         </select>
       </div>
 
       <!-- App Name -->
       <div>
-        <label class="block text-sm font-medium text-gray-400 mb-1">App</label>
+        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+          Application
+        </label>
         <select
           v-model="appName"
           @change="applyFilters"
-          class="w-full bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          class="w-full bg-dark-800/50 border border-dark-600/50 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all appearance-none cursor-pointer"
         >
-          <option value="">All apps</option>
+          <option value="">All applications</option>
           <option v-for="app in apps" :key="app" :value="app">
             {{ app }}
           </option>
@@ -100,11 +121,13 @@ watch(search, () => {
 
       <!-- Session -->
       <div>
-        <label class="block text-sm font-medium text-gray-400 mb-1">Session</label>
+        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+          Session
+        </label>
         <select
           v-model="sessionId"
           @change="applyFilters"
-          class="w-full bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          class="w-full bg-dark-800/50 border border-dark-600/50 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all appearance-none cursor-pointer"
         >
           <option value="">All sessions</option>
           <option v-for="session in sessions" :key="session" :value="session">
@@ -112,37 +135,43 @@ watch(search, () => {
           </option>
         </select>
       </div>
-
-      <!-- Reset Button -->
-      <div class="flex items-end">
-        <button
-          @click="resetFilters"
-          class="w-full bg-dark-700 hover:bg-dark-600 text-gray-300 px-4 py-2 rounded-lg transition-colors"
-        >
-          Reset
-        </button>
-      </div>
     </div>
 
-    <!-- Date Range -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+    <!-- Row 3: Date Range + Reset -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
       <div>
-        <label class="block text-sm font-medium text-gray-400 mb-1">Start Date</label>
+        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+          From
+        </label>
         <input
           v-model="startDate"
           type="datetime-local"
           @change="applyFilters"
-          class="w-full bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          class="w-full bg-dark-800/50 border border-dark-600/50 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all"
         />
       </div>
       <div>
-        <label class="block text-sm font-medium text-gray-400 mb-1">End Date</label>
+        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+          To
+        </label>
         <input
           v-model="endDate"
           type="datetime-local"
           @change="applyFilters"
-          class="w-full bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          class="w-full bg-dark-800/50 border border-dark-600/50 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all"
         />
+      </div>
+      <div class="md:col-span-2 flex justify-end">
+        <button
+          v-if="hasActiveFilters()"
+          @click="resetFilters"
+          class="flex items-center gap-2 bg-dark-700/50 hover:bg-dark-600/50 text-gray-400 hover:text-white px-4 py-2.5 rounded-lg transition-all"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          Reset filters
+        </button>
       </div>
     </div>
   </div>
