@@ -1,13 +1,14 @@
 # @trace-dock/sdk
 
-A universal JavaScript/TypeScript logging SDK with HTTP and WebSocket transport. Works in Node.js, browsers, and Tauri applications.
+A universal JavaScript/TypeScript logging SDK for trace-dock. Works in Node.js, browsers, and Tauri applications.
 
 ## Features
 
 - 🚀 **Universal** - Works in Node.js, browsers, and Tauri
-- 📡 **Dual Transport** - HTTP and WebSocket support
-- 🔍 **Stack Traces** - Automatic stack trace capture for errors
-- 🏷️ **Structured Logging** - Support for tags and metadata
+- 📡 **Dual Transport** - HTTP with optional WebSocket for real-time streaming
+- 🔍 **Stack Traces** - Automatic stack trace capture for errors and warnings
+- 🏷️ **Structured Logging** - Support for metadata and context
+- 👶 **Child Loggers** - Create child loggers with inherited context
 - ⚡ **Lightweight** - Zero dependencies, tree-shakeable
 - 📦 **TypeScript** - Full TypeScript support with type definitions
 
@@ -31,14 +32,14 @@ import { createLogger } from '@trace-dock/sdk';
 
 const logger = createLogger({
   appName: 'my-app',
-  serverUrl: 'http://localhost:3001',
+  endpoint: 'http://localhost:3001/ingest',
 });
 
 // Basic logging
 logger.debug('Debug message');
 logger.info('User logged in', { userId: 123 });
 logger.warn('Rate limit approaching', { current: 95, max: 100 });
-logger.error('Failed to process request', new Error('Connection timeout'));
+logger.error('Failed to process request', { error: new Error('Connection timeout') });
 ```
 
 ## Configuration
@@ -49,14 +50,18 @@ import { createLogger } from '@trace-dock/sdk';
 const logger = createLogger({
   // Required
   appName: 'my-app',
+  endpoint: 'http://localhost:3001/ingest',
   
   // Optional - defaults shown
-  serverUrl: 'http://localhost:3001',  // Trace-dock server URL
-  transport: 'http',                    // 'http' | 'websocket'
-  enabled: true,                        // Enable/disable logging
-  captureStackTrace: true,              // Capture stack traces for errors
-  defaultTags: ['production'],          // Default tags for all logs
-  defaultMeta: { version: '1.0.0' },    // Default metadata for all logs
+  sessionId: undefined,           // Auto-generated if not provided
+  enableWebSocket: false,         // Enable WebSocket for real-time streaming
+  wsEndpoint: undefined,          // Auto-derived from endpoint if not set
+  batchSize: 10,                  // Batch size for HTTP transport
+  flushInterval: 5000,            // Flush interval in ms
+  maxRetries: 3,                  // Max retries for failed requests
+  debug: false,                   // Log to console as well
+  metadata: {},                   // Default metadata for all logs
+  onError: undefined,             // Error callback
 });
 ```
 
@@ -65,43 +70,56 @@ const logger = createLogger({
 ### Log Levels
 
 ```typescript
-logger.debug(message, meta?, tags?);  // Debug level
-logger.info(message, meta?, tags?);   // Info level
-logger.warn(message, meta?, tags?);   // Warning level
-logger.error(message, error?, tags?); // Error level (accepts Error object)
+logger.debug(message, metadata?);  // Debug level
+logger.info(message, metadata?);   // Info level
+logger.warn(message, metadata?);   // Warning level (includes stack trace)
+logger.error(message, metadata?);  // Error level (includes stack trace)
 ```
 
 ### Adding Metadata
 
 ```typescript
-// As second argument
+// Pass metadata as second argument
 logger.info('User action', { userId: 123, action: 'click' });
 
-// With tags
-logger.info('API call', { endpoint: '/users' }, ['api', 'users']);
+// For errors, pass the Error object in metadata
+logger.error('Operation failed', { 
+  error: new Error('Connection timeout'),
+  endpoint: '/api/users'
+});
 ```
 
-### Error Logging
+### Child Loggers
 
-```typescript
-try {
-  await riskyOperation();
-} catch (error) {
-  // Stack trace is automatically captured
-  logger.error('Operation failed', error);
-}
-```
-
-### WebSocket Transport
-
-For real-time logging with lower latency:
+Create child loggers that inherit parent context:
 
 ```typescript
 const logger = createLogger({
   appName: 'my-app',
-  serverUrl: 'ws://localhost:3001',
-  transport: 'websocket',
+  endpoint: 'http://localhost:3001/ingest',
 });
+
+// Create a child logger with additional context
+const userLogger = logger.child({ userId: 123, role: 'admin' });
+
+// All logs from userLogger will include userId and role
+userLogger.info('User performed action'); // metadata includes { userId: 123, role: 'admin' }
+```
+
+### WebSocket Transport
+
+Enable WebSocket for real-time log streaming to the trace-dock UI:
+
+```typescript
+const logger = createLogger({
+  appName: 'my-app',
+  endpoint: 'http://localhost:3001/ingest',
+  enableWebSocket: true,
+  // wsEndpoint is auto-derived: ws://localhost:3001/live
+});
+
+// Don't forget to disconnect when done
+logger.disconnect();
 ```
 
 ### Session Management
@@ -111,32 +129,42 @@ Each logger instance gets a unique session ID. You can also set it manually:
 ```typescript
 const logger = createLogger({
   appName: 'my-app',
+  endpoint: 'http://localhost:3001/ingest',
   sessionId: 'user-session-abc123',
+});
+
+// Get current session ID
+const sessionId = logger.getSessionId();
+
+// Update session ID
+logger.setSessionId('new-session-id');
+```
+
+### Debug Mode
+
+Enable debug mode to also log to the console:
+
+```typescript
+const logger = createLogger({
+  appName: 'my-app',
+  endpoint: 'http://localhost:3001/ingest',
+  debug: true, // Logs will also appear in console
 });
 ```
 
 ## Environment Detection
 
-The SDK automatically detects the runtime environment:
+The SDK automatically detects the runtime environment and includes it in logs:
 
-- **Node.js** - Server-side applications
-- **Browser** - Web applications
-- **Tauri** - Desktop applications
-
-```typescript
-import { getEnvironment } from '@trace-dock/sdk';
-
-const env = getEnvironment();
-// { type: 'node' | 'browser' | 'tauri', version?: string }
-```
-
-## Disabling in Production
+- **Node.js** - Includes Node version, platform, architecture
+- **Browser** - Includes user agent, current URL
+- **Tauri** - Includes Tauri version
 
 ```typescript
-const logger = createLogger({
-  appName: 'my-app',
-  enabled: process.env.NODE_ENV !== 'production',
-});
+import { detectEnvironment } from '@trace-dock/sdk';
+
+const env = detectEnvironment();
+// { type: 'node' | 'browser' | 'tauri' | 'unknown', ... }
 ```
 
 ## TypeScript Support
@@ -148,17 +176,26 @@ import type {
   LogLevel, 
   LogEntry, 
   LoggerConfig,
-  Transport 
+  EnvironmentInfo,
+  TransportOptions 
 } from '@trace-dock/sdk';
 ```
 
 ## Self-Hosted Server
 
-This SDK is designed to work with [trace-dock](https://github.com/YOUR_USERNAME/trace-dock), a self-hosted logging server with a web UI.
+This SDK is designed to work with [trace-dock](https://github.com/JeepayJipex/trace-dock), a self-hosted logging server with a web UI.
 
 ```bash
-# Start the trace-dock server
+# Clone the repository
+git clone https://github.com/JeepayJipex/trace-dock.git
+cd trace-dock
+
+# Start with Docker
 docker-compose up -d
+
+# Or run in development
+pnpm install
+pnpm dev
 ```
 
 ## License
