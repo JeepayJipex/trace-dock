@@ -23,6 +23,7 @@ export const LogEntrySchema = z.object({
   metadata: z.record(z.unknown()).optional(),
   stackTrace: z.string().optional(),
   context: z.record(z.unknown()).optional(),
+  errorGroupId: z.string().optional(),
 });
 
 export const LogQuerySchema = z.object({
@@ -36,7 +37,40 @@ export const LogQuerySchema = z.object({
   offset: z.coerce.number().min(0).default(0),
 });
 
+// Error group status enum
+export const ErrorGroupStatusSchema = z.enum(['unreviewed', 'reviewed', 'ignored', 'resolved']);
+
+// Error group schema
+export const ErrorGroupSchema = z.object({
+  id: z.string().uuid(),
+  fingerprint: z.string(),
+  message: z.string(),
+  appName: z.string(),
+  firstSeen: z.string().datetime(),
+  lastSeen: z.string().datetime(),
+  occurrenceCount: z.number(),
+  status: ErrorGroupStatusSchema,
+  stackTracePreview: z.string().optional(),
+});
+
+export const ErrorGroupQuerySchema = z.object({
+  appName: z.string().optional(),
+  status: ErrorGroupStatusSchema.optional(),
+  search: z.string().optional(),
+  sortBy: z.enum(['last_seen', 'first_seen', 'occurrence_count']).default('last_seen'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  offset: z.coerce.number().min(0).default(0),
+});
+
+export const UpdateErrorGroupStatusSchema = z.object({
+  status: ErrorGroupStatusSchema,
+});
+
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 export type EnvironmentInfo = z.infer<typeof EnvironmentInfoSchema>;
 export type LogEntry = z.infer<typeof LogEntrySchema>;
 export type LogQuery = z.infer<typeof LogQuerySchema>;
+export type ErrorGroupStatus = z.infer<typeof ErrorGroupStatusSchema>;
+export type ErrorGroup = z.infer<typeof ErrorGroupSchema>;
+export type ErrorGroupQuery = z.infer<typeof ErrorGroupQuerySchema>;

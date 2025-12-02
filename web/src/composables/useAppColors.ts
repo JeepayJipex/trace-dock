@@ -22,13 +22,10 @@ const APP_COLORS = [
 
 export type AppColor = typeof APP_COLORS[number];
 
-// Storage key for localStorage
 const STORAGE_KEY = 'trace-dock-app-colors';
 
-// Global state - persisted across component instances
 const appColorMap = ref<Map<string, AppColor>>(new Map());
 
-// Load from localStorage on init
 function loadFromStorage(): void {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -46,7 +43,6 @@ function loadFromStorage(): void {
   }
 }
 
-// Save to localStorage
 function saveToStorage(): void {
   try {
     const data: Record<string, string> = {};
@@ -59,18 +55,16 @@ function saveToStorage(): void {
   }
 }
 
-// Generate a deterministic color index from app name (hash-based)
 function hashString(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
+    hash = hash & hash; 
   }
   return Math.abs(hash);
 }
 
-// Initialize on load
 loadFromStorage();
 
 /**
@@ -82,18 +76,15 @@ export function useAppColors() {
    * Returns a consistent color based on the app name hash
    */
   function getAppColor(appName: string): AppColor {
-    // Check if already assigned
     const existing = appColorMap.value.get(appName);
     if (existing) {
       return existing;
     }
 
-    // Generate deterministic color based on app name hash
     const hash = hashString(appName);
     const colorIndex = hash % APP_COLORS.length;
     const color = APP_COLORS[colorIndex];
 
-    // Store and persist
     appColorMap.value.set(appName, color);
     saveToStorage();
 

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { getLogs, getApps, getSessions } from '@/api/logs';
+import { RouterLink } from 'vue-router';
+import { getApps, getSessions } from '@/api/logs';
+import { getLogsFiltered } from '@/api/errors';
 import { useWebSocket } from '@/composables/useWebSocket';
 import type { LogEntry, LogFilters } from '@/types';
 import LogList from '@/components/LogList.vue';
@@ -9,12 +11,14 @@ import LogDetailSidebar from '@/components/LogDetailSidebar.vue';
 
 const logs = ref<LogEntry[]>([]);
 const total = ref(0);
+const ignoredCount = ref(0);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const offset = ref(0);
 const limit = 50;
 
 const filters = ref<LogFilters>({});
+const hideIgnoredErrors = ref(true);
 const apps = ref<string[]>([]);
 const sessions = ref<string[]>([]);
 
@@ -23,7 +27,8 @@ const searchBarRef = ref<InstanceType<typeof SearchBar> | null>(null);
 
 // WebSocket for live updates
 const { isConnected, isLiveMode, toggleLiveMode } = useWebSocket((log: LogEntry) => {
-  // Add new log at the beginning
+  // Add new log at the beginning (unless it's from an ignored error group)
+  // For now, we'll add all logs and let the filter handle it on next fetch
   logs.value = [log, ...logs.value].slice(0, 500);
   total.value++;
 });
@@ -41,7 +46,7 @@ async function fetchLogs(append = false) {
 
   try {
     const currentOffset = append ? offset.value : 0;
-    const response = await getLogs(filters.value, limit, currentOffset);
+    const response = await getLogsFiltered(filters.value, limit, currentOffset, hideIgnoredErrors.value);
     
     if (append) {
       logs.value = [...logs.value, ...response.logs];
@@ -50,6 +55,7 @@ async function fetchLogs(append = false) {
     }
     
     total.value = response.total;
+    ignoredCount.value = response.ignoredCount;
     offset.value = currentOffset + response.logs.length;
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to fetch logs';
@@ -84,6 +90,12 @@ async function fetchSessions() {
 
 function handleFilterChange(newFilters: LogFilters) {
   filters.value = newFilters;
+  offset.value = 0;
+  fetchLogs();
+}
+
+function toggleHideIgnored() {
+  hideIgnoredErrors.value = !hideIgnoredErrors.value;
   offset.value = 0;
   fetchLogs();
 }
@@ -201,6 +213,34 @@ onMounted(() => {
       :sessions="sessions"
       @update:model-value="handleFilterChange"
     />
+
+    <!-- Hide Ignored Toggle + Ignored Count Banner -->
+    <div class="flex items-center justify-between bg-dark-900/30 border border-dark-700/30 rounded-lg px-4 py-3">
+      <div class="flex items-center gap-3">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            :checked="hideIgnoredErrors"
+            @change="toggleHideIgnored"
+            class="rounded bg-dark-700 border-dark-600 text-blue-500 focus:ring-blue-500/50"
+          />
+          <span class="text-sm text-gray-400">Hide ignored errors</span>
+        </label>
+      </div>
+      
+      <!-- Ignored Count Indicator -->
+      <div v-if="hideIgnoredErrors && ignoredCount > 0" class="flex items-center gap-2">
+        <span class="text-sm text-gray-500">
+          <span class="text-gray-400 font-medium">{{ ignoredCount }}</span> ignored error(s) hidden
+        </span>
+        <RouterLink
+          to="/errors?status=ignored"
+          class="text-sm text-blue-400 hover:text-blue-300 hover:underline transition-colors"
+        >
+          View all →
+        </RouterLink>
+      </div>
+    </div>
 
     <!-- Error -->
     <div 

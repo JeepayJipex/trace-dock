@@ -18,7 +18,7 @@ const db: DatabaseType = new Database(DB_PATH);
 // Enable WAL mode for better performance
 db.pragma('journal_mode = WAL');
 
-// Create tables
+// Create base tables first (without error_group_id to allow migration)
 db.exec(`
   CREATE TABLE IF NOT EXISTS logs (
     id TEXT PRIMARY KEY,
@@ -38,6 +38,43 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
   CREATE INDEX IF NOT EXISTS idx_logs_app_name ON logs(app_name);
   CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id);
+`);
+
+// Migration: Add error_group_id column if it doesn't exist
+const columns = db.prepare("PRAGMA table_info(logs)").all() as { name: string }[];
+const hasErrorGroupId = columns.some(col => col.name === 'error_group_id');
+
+if (!hasErrorGroupId) {
+  console.log('Migrating database: adding error_group_id column to logs table...');
+  db.exec(`ALTER TABLE logs ADD COLUMN error_group_id TEXT`);
+  console.log('Migration complete.');
+}
+
+// Create index for error_group_id (will be ignored if already exists)
+db.exec(`CREATE INDEX IF NOT EXISTS idx_logs_error_group_id ON logs(error_group_id)`);
+
+// Create error_groups table
+db.exec(`
+  -- Error groups table for grouping similar errors
+  CREATE TABLE IF NOT EXISTS error_groups (
+    id TEXT PRIMARY KEY,
+    fingerprint TEXT NOT NULL UNIQUE,
+    message TEXT NOT NULL,
+    app_name TEXT NOT NULL,
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    occurrence_count INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'unreviewed',
+    stack_trace_preview TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_error_groups_fingerprint ON error_groups(fingerprint);
+  CREATE INDEX IF NOT EXISTS idx_error_groups_status ON error_groups(status);
+  CREATE INDEX IF NOT EXISTS idx_error_groups_app_name ON error_groups(app_name);
+  CREATE INDEX IF NOT EXISTS idx_error_groups_last_seen ON error_groups(last_seen DESC);
+  CREATE INDEX IF NOT EXISTS idx_error_groups_occurrence_count ON error_groups(occurrence_count DESC);
 `);
 
 // Create FTS table for full-text search (includes metadata and stack_trace)
@@ -94,8 +131,8 @@ db.exec(`
 
 // Prepared statements
 const insertLog = db.prepare(`
-  INSERT INTO logs (id, timestamp, level, message, app_name, session_id, environment, metadata, stack_trace, context)
-  VALUES (@id, @timestamp, @level, @message, @appName, @sessionId, @environment, @metadata, @stackTrace, @context)
+  INSERT INTO logs (id, timestamp, level, message, app_name, session_id, environment, metadata, stack_trace, context, error_group_id)
+  VALUES (@id, @timestamp, @level, @message, @appName, @sessionId, @environment, @metadata, @stackTrace, @context, @errorGroupId)
 `);
 
 const selectLogs = db.prepare(`
@@ -171,10 +208,95 @@ function parseLogRow(row: Record<string, unknown>): LogEntry {
     metadata: row.metadata ? JSON.parse(row.metadata as string) : undefined,
     stackTrace: row.stack_trace as string | undefined,
     context: row.context ? JSON.parse(row.context as string) : undefined,
+    errorGroupId: row.error_group_id as string | undefined,
   };
 }
 
-export function insertLogEntry(log: LogEntry): void {
+/**
+ * Generate a fingerprint for grouping similar errors
+ * Uses message (normalized) + first stack frame + app name
+ */
+function generateErrorFingerprint(message: string, stackTrace: string | undefined, appName: string): string {
+  // Normalize message by removing variable parts (numbers, UUIDs, etc.)
+  const normalizedMessage = message
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<UUID>')
+    .replace(/\b\d+\b/g, '<NUM>')
+    .replace(/0x[0-9a-f]+/gi, '<HEX>')
+    .replace(/'[^']*'/g, "'<STR>'")
+    .replace(/"[^"]*"/g, '"<STR>"')
+    .trim();
+  
+  // Extract first meaningful stack frame (skip generic frames)
+  let stackFrame = '';
+  if (stackTrace) {
+    const lines = stackTrace.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('at ') && !trimmed.includes('node_modules')) {
+        stackFrame = trimmed.replace(/:\d+:\d+/, ':<LINE>:<COL>');
+        break;
+      }
+    }
+  }
+  
+  // Create fingerprint from combined data
+  const fingerprintData = `${appName}|${normalizedMessage}|${stackFrame}`;
+  
+  // Simple hash function
+  let hash = 0;
+  for (let i = 0; i < fingerprintData.length; i++) {
+    const char = fingerprintData.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  
+  return Math.abs(hash).toString(36);
+}
+
+/**
+ * Create or update an error group and return its ID
+ */
+function upsertErrorGroup(log: LogEntry): string {
+  const fingerprint = generateErrorFingerprint(log.message, log.stackTrace, log.appName);
+  
+  // Check if group exists
+  const existingGroup = db.prepare(`
+    SELECT id, occurrence_count FROM error_groups WHERE fingerprint = ?
+  `).get(fingerprint) as { id: string; occurrence_count: number } | undefined;
+  
+  if (existingGroup) {
+    // Update existing group
+    db.prepare(`
+      UPDATE error_groups 
+      SET last_seen = ?, occurrence_count = occurrence_count + 1, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(log.timestamp, existingGroup.id);
+    
+    return existingGroup.id;
+  } else {
+    // Create new group
+    const groupId = crypto.randomUUID();
+    const stackTracePreview = log.stackTrace 
+      ? log.stackTrace.split('\n').slice(0, 3).join('\n') 
+      : null;
+    
+    db.prepare(`
+      INSERT INTO error_groups (id, fingerprint, message, app_name, first_seen, last_seen, stack_trace_preview)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(groupId, fingerprint, log.message, log.appName, log.timestamp, log.timestamp, stackTracePreview);
+    
+    return groupId;
+  }
+}
+
+export function insertLogEntry(log: LogEntry): { errorGroupId?: string } {
+  let errorGroupId: string | undefined;
+  
+  // For error logs, create/update error group
+  if (log.level === 'error') {
+    errorGroupId = upsertErrorGroup(log);
+  }
+  
   insertLog.run({
     id: log.id,
     timestamp: log.timestamp,
@@ -186,7 +308,10 @@ export function insertLogEntry(log: LogEntry): void {
     metadata: log.metadata ? JSON.stringify(log.metadata) : null,
     stackTrace: log.stackTrace || null,
     context: log.context ? JSON.stringify(log.context) : null,
+    errorGroupId: errorGroupId || null,
   });
+  
+  return { errorGroupId };
 }
 
 export function getLogs(params: LogsQueryParams): PaginatedLogs {
@@ -407,6 +532,223 @@ export function getSearchSuggestions(prefix: string): { type: string; value: str
   }
   
   return suggestions.slice(0, 10);
+}
+
+// ==================== Error Groups ====================
+
+export type ErrorGroupStatus = 'unreviewed' | 'reviewed' | 'ignored' | 'resolved';
+
+export interface ErrorGroup {
+  id: string;
+  fingerprint: string;
+  message: string;
+  appName: string;
+  firstSeen: string;
+  lastSeen: string;
+  occurrenceCount: number;
+  status: ErrorGroupStatus;
+  stackTracePreview?: string;
+}
+
+export interface ErrorGroupsQueryParams {
+  appName?: string;
+  status?: ErrorGroupStatus;
+  search?: string;
+  sortBy?: 'last_seen' | 'first_seen' | 'occurrence_count';
+  sortOrder?: 'asc' | 'desc';
+  limit: number;
+  offset: number;
+}
+
+export interface PaginatedErrorGroups {
+  errorGroups: ErrorGroup[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ErrorGroupStats {
+  totalGroups: number;
+  totalOccurrences: number;
+  byStatus: Record<ErrorGroupStatus, number>;
+  byApp: Record<string, number>;
+  recentTrend: { date: string; count: number }[];
+}
+
+function parseErrorGroupRow(row: Record<string, unknown>): ErrorGroup {
+  return {
+    id: row.id as string,
+    fingerprint: row.fingerprint as string,
+    message: row.message as string,
+    appName: row.app_name as string,
+    firstSeen: row.first_seen as string,
+    lastSeen: row.last_seen as string,
+    occurrenceCount: row.occurrence_count as number,
+    status: row.status as ErrorGroupStatus,
+    stackTracePreview: row.stack_trace_preview as string | undefined,
+  };
+}
+
+export function getErrorGroups(params: ErrorGroupsQueryParams): PaginatedErrorGroups {
+  const conditions: string[] = [];
+  const values: unknown[] = [];
+
+  if (params.appName) {
+    conditions.push('app_name = ?');
+    values.push(params.appName);
+  }
+
+  if (params.status) {
+    conditions.push('status = ?');
+    values.push(params.status);
+  }
+
+  if (params.search) {
+    conditions.push('message LIKE ?');
+    values.push(`%${params.search}%`);
+  }
+
+  let query = 'SELECT * FROM error_groups';
+  let countQuery = 'SELECT COUNT(*) as total FROM error_groups';
+
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+    countQuery += ' WHERE ' + conditions.join(' AND ');
+  }
+
+  // Sort
+  const sortColumn = params.sortBy || 'last_seen';
+  const sortOrder = params.sortOrder || 'desc';
+  query += ` ORDER BY ${sortColumn} ${sortOrder}`;
+
+  query += ' LIMIT ? OFFSET ?';
+
+  const countStmt = db.prepare(countQuery);
+  const queryStmt = db.prepare(query);
+
+  const total = (countStmt.get(...values) as { total: number }).total;
+  const rows = queryStmt.all(...values, params.limit, params.offset) as Record<string, unknown>[];
+  const errorGroups = rows.map(parseErrorGroupRow);
+
+  return {
+    errorGroups,
+    total,
+    limit: params.limit,
+    offset: params.offset,
+  };
+}
+
+export function getErrorGroupById(id: string): ErrorGroup | null {
+  const row = db.prepare('SELECT * FROM error_groups WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  return row ? parseErrorGroupRow(row) : null;
+}
+
+export function updateErrorGroupStatus(id: string, status: ErrorGroupStatus): boolean {
+  const result = db.prepare(`
+    UPDATE error_groups 
+    SET status = ?, updated_at = datetime('now') 
+    WHERE id = ?
+  `).run(status, id);
+  
+  return result.changes > 0;
+}
+
+export function getErrorGroupOccurrences(groupId: string, limit = 50, offset = 0): PaginatedLogs {
+  const countStmt = db.prepare('SELECT COUNT(*) as total FROM logs WHERE error_group_id = ?');
+  const queryStmt = db.prepare(`
+    SELECT * FROM logs 
+    WHERE error_group_id = ? 
+    ORDER BY timestamp DESC 
+    LIMIT ? OFFSET ?
+  `);
+
+  const total = (countStmt.get(groupId) as { total: number }).total;
+  const rows = queryStmt.all(groupId, limit, offset) as Record<string, unknown>[];
+  const logs = rows.map(parseLogRow);
+
+  return {
+    logs,
+    total,
+    limit,
+    offset,
+  };
+}
+
+export function getErrorGroupStats(): ErrorGroupStats {
+  // Total groups
+  const totalGroups = (db.prepare('SELECT COUNT(*) as count FROM error_groups').get() as { count: number }).count;
+  
+  // Total occurrences
+  const totalOccurrences = (db.prepare('SELECT SUM(occurrence_count) as sum FROM error_groups').get() as { sum: number | null }).sum || 0;
+  
+  // By status
+  const byStatusRows = db.prepare(`
+    SELECT status, COUNT(*) as count FROM error_groups GROUP BY status
+  `).all() as { status: ErrorGroupStatus; count: number }[];
+  const byStatus = {
+    unreviewed: 0,
+    reviewed: 0,
+    ignored: 0,
+    resolved: 0,
+    ...Object.fromEntries(byStatusRows.map(r => [r.status, r.count])),
+  };
+  
+  // By app
+  const byAppRows = db.prepare(`
+    SELECT app_name, COUNT(*) as count FROM error_groups GROUP BY app_name
+  `).all() as { app_name: string; count: number }[];
+  const byApp = Object.fromEntries(byAppRows.map(r => [r.app_name, r.count]));
+  
+  // Recent trend (last 7 days)
+  const recentTrendRows = db.prepare(`
+    SELECT DATE(last_seen) as date, SUM(occurrence_count) as count
+    FROM error_groups
+    WHERE last_seen >= datetime('now', '-7 days')
+    GROUP BY DATE(last_seen)
+    ORDER BY date ASC
+  `).all() as { date: string; count: number }[];
+  
+  return {
+    totalGroups,
+    totalOccurrences,
+    byStatus,
+    byApp,
+    recentTrend: recentTrendRows,
+  };
+}
+
+export function getIgnoredErrorGroupIds(): string[] {
+  const rows = db.prepare(`
+    SELECT id FROM error_groups WHERE status = 'ignored'
+  `).all() as { id: string }[];
+  return rows.map(r => r.id);
+}
+
+export function getLogsWithIgnoredInfo(params: LogsQueryParams & { excludeIgnored?: boolean }): PaginatedLogs & { ignoredCount: number } {
+  const baseResult = getLogs(params);
+  
+  // Get ignored error group IDs
+  const ignoredIds = getIgnoredErrorGroupIds();
+  
+  if (params.excludeIgnored && ignoredIds.length > 0) {
+    // Filter out ignored errors
+    const filteredLogs = baseResult.logs.filter(log => 
+      !log.errorGroupId || !ignoredIds.includes(log.errorGroupId)
+    );
+    
+    const ignoredCount = baseResult.logs.length - filteredLogs.length;
+    
+    return {
+      ...baseResult,
+      logs: filteredLogs,
+      ignoredCount,
+    };
+  }
+  
+  return {
+    ...baseResult,
+    ignoredCount: 0,
+  };
 }
 
 export { db };

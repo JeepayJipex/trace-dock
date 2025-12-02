@@ -2,8 +2,23 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { env } from 'hono/adapter';
-import { LogEntrySchema, LogQuerySchema } from './schemas';
-import { insertLogEntry, getLogs, getLogById, getStats, getAppNames, getSessionIds, getSearchSuggestions, getMetadataKeys } from './db';
+import { LogEntrySchema, LogQuerySchema, ErrorGroupQuerySchema, UpdateErrorGroupStatusSchema } from './schemas';
+import { 
+  insertLogEntry, 
+  getLogs, 
+  getLogById, 
+  getStats, 
+  getAppNames, 
+  getSessionIds, 
+  getSearchSuggestions, 
+  getMetadataKeys,
+  getErrorGroups,
+  getErrorGroupById,
+  updateErrorGroupStatus,
+  getErrorGroupOccurrences,
+  getErrorGroupStats,
+  getLogsWithIgnoredInfo,
+} from './db';
 import { wsManager } from './websocket';
 
 // Default allowed origins for development
@@ -190,6 +205,144 @@ app.get('/metadata-keys', async (c) => {
     return c.json({ keys });
   } catch (error) {
     console.error('Error fetching metadata keys:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// ==================== Error Groups API ====================
+
+// Get error groups with pagination and filtering
+app.get('/error-groups', async (c) => {
+  try {
+    const query = c.req.query();
+    const result = ErrorGroupQuerySchema.safeParse({
+      appName: query.appName,
+      status: query.status,
+      search: query.search,
+      sortBy: query.sortBy,
+      sortOrder: query.sortOrder,
+      limit: query.limit,
+      offset: query.offset,
+    });
+
+    if (!result.success) {
+      return c.json(
+        { error: 'Invalid query parameters', details: result.error.flatten() },
+        400
+      );
+    }
+
+    const errorGroups = getErrorGroups(result.data);
+    return c.json(errorGroups);
+  } catch (error) {
+    console.error('Error fetching error groups:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Get error groups statistics
+app.get('/error-groups/stats', async (c) => {
+  try {
+    const stats = getErrorGroupStats();
+    return c.json(stats);
+  } catch (error) {
+    console.error('Error fetching error group stats:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Get single error group by ID
+app.get('/error-groups/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const errorGroup = getErrorGroupById(id);
+
+    if (!errorGroup) {
+      return c.json({ error: 'Error group not found' }, 404);
+    }
+
+    return c.json(errorGroup);
+  } catch (error) {
+    console.error('Error fetching error group:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Update error group status
+app.patch('/error-groups/:id/status', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const result = UpdateErrorGroupStatusSchema.safeParse(body);
+
+    if (!result.success) {
+      return c.json(
+        { error: 'Invalid request body', details: result.error.flatten() },
+        400
+      );
+    }
+
+    const updated = updateErrorGroupStatus(id, result.data.status);
+    
+    if (!updated) {
+      return c.json({ error: 'Error group not found' }, 404);
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error updating error group status:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Get occurrences (logs) for a specific error group
+app.get('/error-groups/:id/occurrences', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const query = c.req.query();
+    const limit = parseInt(query.limit || '50', 10);
+    const offset = parseInt(query.offset || '0', 10);
+
+    const errorGroup = getErrorGroupById(id);
+    if (!errorGroup) {
+      return c.json({ error: 'Error group not found' }, 404);
+    }
+
+    const occurrences = getErrorGroupOccurrences(id, limit, offset);
+    return c.json(occurrences);
+  } catch (error) {
+    console.error('Error fetching error group occurrences:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Get logs with ignored errors handling
+app.get('/logs-filtered', async (c) => {
+  try {
+    const query = c.req.query();
+    const result = LogQuerySchema.safeParse({
+      level: query.level,
+      appName: query.appName,
+      sessionId: query.sessionId,
+      search: query.search,
+      startDate: query.startDate,
+      endDate: query.endDate,
+      limit: query.limit,
+      offset: query.offset,
+    });
+
+    if (!result.success) {
+      return c.json(
+        { error: 'Invalid query parameters', details: result.error.flatten() },
+        400
+      );
+    }
+
+    const excludeIgnored = query.excludeIgnored === 'true';
+    const logs = getLogsWithIgnoredInfo({ ...result.data, excludeIgnored });
+    return c.json(logs);
+  } catch (error) {
+    console.error('Error fetching filtered logs:', error);
     return c.json({ error: 'Internal server error' }, 500);
   }
 });

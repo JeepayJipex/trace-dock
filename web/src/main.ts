@@ -16,6 +16,16 @@ const router = createRouter({
       name: 'log-detail',
       component: () => import('./views/LogDetailView.vue'),
     },
+    {
+      path: '/errors',
+      name: 'error-groups',
+      component: () => import('./views/ErrorGroupsView.vue'),
+    },
+    {
+      path: '/errors/:id',
+      name: 'error-group-detail',
+      component: () => import('./views/ErrorGroupDetailView.vue'),
+    },
   ],
 });
 
