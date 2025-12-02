@@ -1,6 +1,6 @@
 {
   "name": "@trace-dock/sdk",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "JavaScript/TypeScript SDK for trace-dock logging - Universal logger with HTTP/WebSocket transport",
   "type": "module",
   "main": "./dist/index.js",
