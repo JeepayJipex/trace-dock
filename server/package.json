@@ -8,6 +8,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsup src/index.ts --format esm --clean",
     "start": "node dist/index.js",
+    "test": "vitest",
+    "test:run": "vitest run",
     "lint": "eslint src/",
     "clean": "rm -rf dist",
     "db:setup": "tsx src/db/setup.ts"
@@ -22,8 +24,10 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^20.10.0",
+    "msw": "^2.12.3",
     "tsup": "^8.0.1",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.14"
   }
 }

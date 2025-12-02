@@ -12,6 +12,11 @@
     "build:sdk": "turbo run build --filter=@trace-dock/sdk",
     "build:server": "turbo run build --filter=@trace-dock/server",
     "build:web": "turbo run build --filter=@trace-dock/web",
+    "test": "turbo run test",
+    "test:run": "turbo run test:run",
+    "test:sdk": "turbo run test:run --filter=@trace-dock/sdk",
+    "test:server": "turbo run test:run --filter=@trace-dock/server",
+    "test:web": "turbo run test:run --filter=@trace-dock/web",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
     "docker:up": "docker-compose up -d --build",
@@ -20,7 +25,8 @@
   },
   "devDependencies": {
     "turbo": "^2.3.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.14"
   },
   "engines": {
     "node": ">=20.0.0",

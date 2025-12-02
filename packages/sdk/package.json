@@ -21,14 +21,18 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "test": "vitest",
+    "test:run": "vitest run",
     "lint": "eslint src/",
     "clean": "rm -rf dist",
     "prepublishOnly": "pnpm run build"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "msw": "^2.12.3",
     "tsup": "^8.0.1",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.14"
   },
   "keywords": [
     "logging",
