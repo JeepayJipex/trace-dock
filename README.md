@@ -11,7 +11,8 @@ A complete logging and tracing solution with SDK, server, and web UI for real-ti
 - **🖥️ Web UI** - Beautiful dark-themed dashboard with live updates
 - **🚨 Error Tracking** - Automatic error grouping with fingerprinting (like Sentry)
 - **🔗 Distributed Tracing** - Full tracing support with waterfall visualization (like Datadog APM)
-- **🐳 Docker** - One-command deployment with Docker Compose
+- **�️ Data Retention** - Configurable retention periods with automatic cleanup
+- **�🐳 Docker** - One-command deployment with Docker Compose
 
 ## 📁 Project Structure
 
@@ -465,6 +466,63 @@ curl -X PATCH http://localhost:3000/spans/uuid \
   }'
 ```
 
+### Settings API
+
+#### `GET /settings`
+Get current retention and cleanup settings.
+
+```json
+{
+  "logsRetentionDays": 7,
+  "tracesRetentionDays": 14,
+  "spansRetentionDays": 14,
+  "errorGroupsRetentionDays": 30,
+  "cleanupEnabled": true,
+  "cleanupIntervalHours": 1
+}
+```
+
+#### `PATCH /settings`
+Update retention and cleanup settings.
+
+```bash
+curl -X PATCH http://localhost:3000/settings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "logsRetentionDays": 14,
+    "cleanupEnabled": true,
+    "cleanupIntervalHours": 2
+  }'
+```
+
+#### `GET /settings/stats`
+Get storage statistics.
+
+```json
+{
+  "totalLogs": 12345,
+  "totalTraces": 500,
+  "totalSpans": 2500,
+  "totalErrorGroups": 42,
+  "databaseSizeBytes": 10485760,
+  "oldestLog": "2024-01-01T00:00:00.000Z",
+  "oldestTrace": "2024-01-01T00:00:00.000Z"
+}
+```
+
+#### `POST /settings/cleanup`
+Trigger manual cleanup based on current retention settings.
+
+```json
+{
+  "logsDeleted": 150,
+  "tracesDeleted": 25,
+  "spansDeleted": 100,
+  "errorGroupsDeleted": 5,
+  "durationMs": 45
+}
+```
+
 #### `WebSocket /live`
 Real-time log streaming.
 
@@ -497,6 +555,12 @@ ws.onmessage = (event) => {
   - Duration breakdown
   - Associated logs per trace
   - Status indicators (running, completed, error)
+- **Data Retention & Cleanup** - Automatic data management:
+  - Configurable retention periods per data type (logs, traces, spans, error groups)
+  - Automatic cleanup job (runs hourly by default)
+  - Manual cleanup trigger
+  - Storage statistics (database size, record counts, oldest data)
+  - Set retention to 0 to disable cleanup for specific types
 - **Dark Theme** - Beautiful dark UI optimized for readability
 - **Responsive** - Works on desktop and mobile
 

@@ -151,3 +151,32 @@ export interface TraceStats {
   byApp: Record<string, number>;
   recentTrend: { date: string; count: number; avgDuration: number }[];
 }
+
+// ==================== Settings ====================
+
+export interface RetentionSettings {
+  logsRetentionDays: number;
+  tracesRetentionDays: number;
+  spansRetentionDays: number;
+  errorGroupsRetentionDays: number;
+  cleanupEnabled: boolean;
+  cleanupIntervalHours: number;
+}
+
+export interface StorageStats {
+  totalLogs: number;
+  totalTraces: number;
+  totalSpans: number;
+  totalErrorGroups: number;
+  databaseSizeBytes: number;
+  oldestLog: string | null;
+  oldestTrace: string | null;
+}
+
+export interface CleanupResult {
+  logsDeleted: number;
+  tracesDeleted: number;
+  spansDeleted: number;
+  errorGroupsDeleted: number;
+  durationMs: number;
+}

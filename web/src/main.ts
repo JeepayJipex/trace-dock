@@ -36,6 +36,11 @@ const router = createRouter({
       name: 'trace-detail',
       component: () => import('./views/TraceDetailView.vue'),
     },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('./views/SettingsView.vue'),
+    },
   ],
 });
 

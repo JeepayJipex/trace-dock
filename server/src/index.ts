@@ -29,8 +29,15 @@ import {
   updateSpan,
   getTraceStats,
   getTraceWithDetails,
+  getSettings,
+  updateSettings,
+  getStorageStats,
+  runCleanup,
+  startCleanupJob,
+  restartCleanupJob,
   type Trace,
   type Span,
+  type RetentionSettings,
 } from './db';
 
 const app = new Hono();
@@ -565,6 +572,61 @@ app.patch('/spans/:id', async (c) => {
   }
 });
 
+// ============================================
+// Settings & Retention API
+// ============================================
+
+// Get current settings
+app.get('/settings', (c) => {
+  try {
+    const settings = getSettings();
+    return c.json(settings);
+  } catch (error) {
+    console.error('Error getting settings:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Update settings
+app.patch('/settings', async (c) => {
+  try {
+    const body = await c.req.json() as Partial<RetentionSettings>;
+    const updatedSettings = updateSettings(body);
+    
+    // Restart cleanup job if cleanup settings changed
+    if (body.cleanupEnabled !== undefined || body.cleanupIntervalHours !== undefined) {
+      restartCleanupJob();
+    }
+    
+    return c.json(updatedSettings);
+  } catch (error) {
+    console.error('Error updating settings:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Get storage statistics
+app.get('/settings/stats', (c) => {
+  try {
+    const stats = getStorageStats();
+    return c.json(stats);
+  } catch (error) {
+    console.error('Error getting storage stats:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Run manual cleanup
+app.post('/settings/cleanup', (c) => {
+  try {
+    const result = runCleanup();
+    return c.json(result);
+  } catch (error) {
+    console.error('Error running cleanup:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
 // Start server
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -582,6 +644,9 @@ const server = serve({
 ║  Health:      http://localhost:${PORT}/                  ║
 ╚═══════════════════════════════════════════════════════╝
   `);
+  
+  // Start automatic cleanup job
+  startCleanupJob();
 });
 
 // Inject WebSocket support

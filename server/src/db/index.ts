@@ -147,6 +147,33 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_error_groups_occurrence_count ON error_groups(occurrence_count DESC);
 `);
 
+// Create settings table for retention and other configurations
+db.exec(`
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+`);
+
+// Insert default retention settings if they don't exist
+const defaultSettings: Record<string, string> = {
+  'retention.logs_days': '7',
+  'retention.traces_days': '14',
+  'retention.spans_days': '14',
+  'retention.error_groups_days': '30',
+  'cleanup.enabled': 'true',
+  'cleanup.interval_hours': '1',
+};
+
+const insertSetting = db.prepare(`
+  INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)
+`);
+
+for (const [key, value] of Object.entries(defaultSettings)) {
+  insertSetting.run(key, value);
+}
+
 // Create FTS table for full-text search (includes metadata and stack_trace)
 // Drop and recreate to ensure correct schema
 db.exec(`
@@ -1187,6 +1214,249 @@ export function getTraceWithDetails(id: string): { trace: Trace; spans: Span[]; 
   const logs = getLogsByTraceId(id);
 
   return { trace, spans, logs };
+}
+
+// ============================================
+// Settings Functions
+// ============================================
+
+export interface RetentionSettings {
+  logsRetentionDays: number;
+  tracesRetentionDays: number;
+  spansRetentionDays: number;
+  errorGroupsRetentionDays: number;
+  cleanupEnabled: boolean;
+  cleanupIntervalHours: number;
+}
+
+export interface StorageStats {
+  totalLogs: number;
+  totalTraces: number;
+  totalSpans: number;
+  totalErrorGroups: number;
+  databaseSizeBytes: number;
+  oldestLog: string | null;
+  oldestTrace: string | null;
+}
+
+export interface CleanupResult {
+  logsDeleted: number;
+  tracesDeleted: number;
+  spansDeleted: number;
+  errorGroupsDeleted: number;
+  durationMs: number;
+}
+
+export function getSettings(): RetentionSettings {
+  const rows = db.prepare(`SELECT key, value FROM settings`).all() as { key: string; value: string }[];
+  const settingsMap = Object.fromEntries(rows.map(r => [r.key, r.value]));
+
+  return {
+    logsRetentionDays: parseInt(settingsMap['retention.logs_days'] || '7', 10),
+    tracesRetentionDays: parseInt(settingsMap['retention.traces_days'] || '14', 10),
+    spansRetentionDays: parseInt(settingsMap['retention.spans_days'] || '14', 10),
+    errorGroupsRetentionDays: parseInt(settingsMap['retention.error_groups_days'] || '30', 10),
+    cleanupEnabled: settingsMap['cleanup.enabled'] === 'true',
+    cleanupIntervalHours: parseInt(settingsMap['cleanup.interval_hours'] || '1', 10),
+  };
+}
+
+export function updateSettings(updates: Partial<RetentionSettings>): RetentionSettings {
+  const updateStmt = db.prepare(`
+    INSERT INTO settings (key, value, updated_at) 
+    VALUES (?, ?, datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+  `);
+
+  if (updates.logsRetentionDays !== undefined) {
+    updateStmt.run('retention.logs_days', updates.logsRetentionDays.toString());
+  }
+  if (updates.tracesRetentionDays !== undefined) {
+    updateStmt.run('retention.traces_days', updates.tracesRetentionDays.toString());
+  }
+  if (updates.spansRetentionDays !== undefined) {
+    updateStmt.run('retention.spans_days', updates.spansRetentionDays.toString());
+  }
+  if (updates.errorGroupsRetentionDays !== undefined) {
+    updateStmt.run('retention.error_groups_days', updates.errorGroupsRetentionDays.toString());
+  }
+  if (updates.cleanupEnabled !== undefined) {
+    updateStmt.run('cleanup.enabled', updates.cleanupEnabled.toString());
+  }
+  if (updates.cleanupIntervalHours !== undefined) {
+    updateStmt.run('cleanup.interval_hours', updates.cleanupIntervalHours.toString());
+  }
+
+  return getSettings();
+}
+
+export function getStorageStats(): StorageStats {
+  const totalLogs = (db.prepare('SELECT COUNT(*) as count FROM logs').get() as { count: number }).count;
+  const totalTraces = (db.prepare('SELECT COUNT(*) as count FROM traces').get() as { count: number }).count;
+  const totalSpans = (db.prepare('SELECT COUNT(*) as count FROM spans').get() as { count: number }).count;
+  const totalErrorGroups = (db.prepare('SELECT COUNT(*) as count FROM error_groups').get() as { count: number }).count;
+
+  // Get database file size
+  const pageCount = (db.pragma('page_count') as { page_count: number }[])[0]?.page_count || 0;
+  const pageSize = (db.pragma('page_size') as { page_size: number }[])[0]?.page_size || 4096;
+  const databaseSizeBytes = pageCount * pageSize;
+
+  // Get oldest records
+  const oldestLogRow = db.prepare('SELECT MIN(timestamp) as oldest FROM logs').get() as { oldest: string | null };
+  const oldestTraceRow = db.prepare('SELECT MIN(start_time) as oldest FROM traces').get() as { oldest: string | null };
+
+  return {
+    totalLogs,
+    totalTraces,
+    totalSpans,
+    totalErrorGroups,
+    databaseSizeBytes,
+    oldestLog: oldestLogRow.oldest,
+    oldestTrace: oldestTraceRow.oldest,
+  };
+}
+
+// ============================================
+// Cleanup Functions
+// ============================================
+
+export function cleanupOldLogs(retentionDays: number): number {
+  if (retentionDays <= 0) return 0;
+
+  const result = db.prepare(`
+    DELETE FROM logs WHERE timestamp < datetime('now', '-' || ? || ' days')
+  `).run(retentionDays);
+
+  return result.changes;
+}
+
+export function cleanupOldTraces(retentionDays: number): number {
+  if (retentionDays <= 0) return 0;
+
+  const result = db.prepare(`
+    DELETE FROM traces WHERE start_time < datetime('now', '-' || ? || ' days')
+  `).run(retentionDays);
+
+  return result.changes;
+}
+
+export function cleanupOldSpans(retentionDays: number): number {
+  if (retentionDays <= 0) return 0;
+
+  const result = db.prepare(`
+    DELETE FROM spans WHERE start_time < datetime('now', '-' || ? || ' days')
+  `).run(retentionDays);
+
+  return result.changes;
+}
+
+export function cleanupOldErrorGroups(retentionDays: number): number {
+  if (retentionDays <= 0) return 0;
+
+  const result = db.prepare(`
+    DELETE FROM error_groups WHERE last_seen < datetime('now', '-' || ? || ' days')
+  `).run(retentionDays);
+
+  return result.changes;
+}
+
+export function cleanupOrphanedSpans(): number {
+  // Remove spans that belong to deleted traces
+  const result = db.prepare(`
+    DELETE FROM spans WHERE trace_id NOT IN (SELECT id FROM traces)
+  `).run();
+
+  return result.changes;
+}
+
+export function runCleanup(): CleanupResult {
+  const startTime = Date.now();
+  const settings = getSettings();
+
+  const logsDeleted = cleanupOldLogs(settings.logsRetentionDays);
+  const tracesDeleted = cleanupOldTraces(settings.tracesRetentionDays);
+  const spansDeleted = cleanupOldSpans(settings.spansRetentionDays) + cleanupOrphanedSpans();
+  const errorGroupsDeleted = cleanupOldErrorGroups(settings.errorGroupsRetentionDays);
+
+  const durationMs = Date.now() - startTime;
+
+  // Vacuum to reclaim disk space (do this periodically, not every cleanup)
+  // Only vacuum if significant data was deleted
+  if (logsDeleted + tracesDeleted + spansDeleted + errorGroupsDeleted > 100) {
+    try {
+      db.exec('VACUUM');
+    } catch {
+      // VACUUM may fail if there are active transactions, that's ok
+    }
+  }
+
+  return {
+    logsDeleted,
+    tracesDeleted,
+    spansDeleted,
+    errorGroupsDeleted,
+    durationMs,
+  };
+}
+
+// ============================================
+// Cleanup Job (Automatic)
+// ============================================
+
+let cleanupIntervalId: NodeJS.Timeout | null = null;
+
+export function startCleanupJob(): void {
+  const settings = getSettings();
+  
+  if (!settings.cleanupEnabled) {
+    console.log('[Cleanup] Automatic cleanup is disabled');
+    return;
+  }
+
+  const intervalMs = settings.cleanupIntervalHours * 60 * 60 * 1000;
+  
+  // Run immediately on start
+  console.log('[Cleanup] Running initial cleanup...');
+  const result = runCleanup();
+  console.log(`[Cleanup] Initial cleanup completed in ${result.durationMs}ms:`, {
+    logsDeleted: result.logsDeleted,
+    tracesDeleted: result.tracesDeleted,
+    spansDeleted: result.spansDeleted,
+    errorGroupsDeleted: result.errorGroupsDeleted,
+  });
+
+  // Schedule periodic cleanup
+  cleanupIntervalId = setInterval(() => {
+    const currentSettings = getSettings();
+    if (!currentSettings.cleanupEnabled) {
+      console.log('[Cleanup] Cleanup skipped (disabled)');
+      return;
+    }
+
+    console.log('[Cleanup] Running scheduled cleanup...');
+    const result = runCleanup();
+    console.log(`[Cleanup] Scheduled cleanup completed in ${result.durationMs}ms:`, {
+      logsDeleted: result.logsDeleted,
+      tracesDeleted: result.tracesDeleted,
+      spansDeleted: result.spansDeleted,
+      errorGroupsDeleted: result.errorGroupsDeleted,
+    });
+  }, intervalMs);
+
+  console.log(`[Cleanup] Cleanup job started, running every ${settings.cleanupIntervalHours} hour(s)`);
+}
+
+export function stopCleanupJob(): void {
+  if (cleanupIntervalId) {
+    clearInterval(cleanupIntervalId);
+    cleanupIntervalId = null;
+    console.log('[Cleanup] Cleanup job stopped');
+  }
+}
+
+export function restartCleanupJob(): void {
+  stopCleanupJob();
+  startCleanupJob();
 }
 
 export { db };
