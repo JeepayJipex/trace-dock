@@ -63,6 +63,11 @@ export interface LoggerConfig {
    */
   appName: string;
   /**
+   * Enable or disable all SDK functionality globally.
+   * When false, no logs will be sent. Default: true
+   */
+  enabled?: boolean;
+  /**
    * A unique identifier for the logging session.
    */
   sessionId?: string;
@@ -101,6 +106,12 @@ export interface LoggerConfig {
 }
 
 export interface TracerConfig extends LoggerConfig {
+  /**
+   * Enable or disable tracing (traces and spans).
+   * When false, no traces/spans will be sent but logs still work.
+   * Default: true (follows global `enabled` if not specified)
+   */
+  enableTracing?: boolean;
   /**
    * Auto-end spans that haven't been ended after this duration (ms)
    */

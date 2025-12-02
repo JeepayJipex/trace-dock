@@ -23,11 +23,18 @@ export class Tracer {
   private activeTraces: Map<string, ActiveTrace> = new Map();
   private currentTraceId: string | null = null;
   private currentSpanId: string | null = null;
+  private _enabled: boolean;
+  private _tracingEnabled: boolean;
 
   constructor(config: TracerConfig) {
+    this._enabled = config.enabled ?? true;
+    this._tracingEnabled = config.enableTracing ?? true;
+
     this.config = {
       endpoint: config.endpoint,
       appName: config.appName,
+      enabled: this._enabled,
+      enableTracing: this._tracingEnabled,
       sessionId: config.sessionId || generateId(),
       enableWebSocket: config.enableWebSocket ?? false,
       wsEndpoint: config.wsEndpoint || config.endpoint.replace(/^http/, 'ws').replace('/ingest', '/live'),
@@ -45,10 +52,62 @@ export class Tracer {
   }
 
   /**
+   * Check if the tracer is globally enabled
+   */
+  isEnabled(): boolean {
+    return this._enabled;
+  }
+
+  /**
+   * Check if tracing (traces/spans) is enabled
+   */
+  isTracingEnabled(): boolean {
+    return this._enabled && this._tracingEnabled;
+  }
+
+  /**
+   * Enable all tracer functionality
+   */
+  enable(): void {
+    this._enabled = true;
+  }
+
+  /**
+   * Disable all tracer functionality
+   */
+  disable(): void {
+    this._enabled = false;
+  }
+
+  /**
+   * Enable tracing (traces/spans)
+   */
+  enableTracing(): void {
+    this._tracingEnabled = true;
+  }
+
+  /**
+   * Disable tracing (traces/spans) - logs still work
+   */
+  disableTracing(): void {
+    this._tracingEnabled = false;
+  }
+
+  /**
    * Start a new trace
    */
   startTrace(name: string, metadata?: Record<string, unknown>): string {
     const traceId = generateId();
+    
+    // If tracing is disabled, return a dummy trace ID but don't send anything
+    if (!this.isTracingEnabled()) {
+      if (this.config.debug) {
+        console.log(`[TRACE:SKIP] ${name} (tracing disabled)`);
+      }
+      this.currentTraceId = traceId;
+      return traceId;
+    }
+
     const startTime = getTimestamp();
     const startTimestamp = Date.now();
 
@@ -89,6 +148,15 @@ export class Tracer {
    * End a trace
    */
   endTrace(traceId: string, status: TraceStatus = 'completed'): void {
+    // If tracing is disabled, just clear the current trace ID
+    if (!this.isTracingEnabled()) {
+      if (this.currentTraceId === traceId) {
+        this.currentTraceId = null;
+        this.currentSpanId = null;
+      }
+      return;
+    }
+
     const activeTrace = this.activeTraces.get(traceId);
     if (!activeTrace) {
       if (this.config.debug) {
@@ -141,6 +209,17 @@ export class Tracer {
     metadata?: Record<string, unknown>;
   }): string {
     const traceId = options?.traceId || this.currentTraceId;
+    const spanId = generateId();
+
+    // If tracing is disabled, return a dummy span ID
+    if (!this.isTracingEnabled()) {
+      if (this.config.debug) {
+        console.log(`[SPAN:SKIP] ${name} (tracing disabled)`);
+      }
+      this.currentSpanId = spanId;
+      return spanId;
+    }
+
     if (!traceId) {
       throw new Error('No active trace. Call startTrace() first or provide a traceId.');
     }
@@ -150,7 +229,6 @@ export class Tracer {
       throw new Error(`Trace ${traceId} not found or already ended.`);
     }
 
-    const spanId = generateId();
     const startTime = getTimestamp();
     const startTimestamp = Date.now();
     const parentSpanId = options?.parentSpanId || this.currentSpanId || null;
@@ -189,6 +267,14 @@ export class Tracer {
    * End a span
    */
   endSpan(spanId: string, status: TraceStatus = 'completed', metadata?: Record<string, unknown>): void {
+    // If tracing is disabled, just clear the current span ID if it matches
+    if (!this.isTracingEnabled()) {
+      if (this.currentSpanId === spanId) {
+        this.currentSpanId = null;
+      }
+      return;
+    }
+
     // Find the span in any active trace
     let activeTrace: ActiveTrace | undefined;
     let activeSpan: ActiveSpan | undefined;
@@ -287,6 +373,16 @@ export class Tracer {
    * Log a message within the current trace/span context
    */
   log(level: LogLevel, message: string, metadata?: Record<string, unknown>): void {
+    // Always log to console in debug mode
+    if (this.config.debug) {
+      console.log(`[${level.toUpperCase()}]`, message, metadata);
+    }
+
+    // Don't send if globally disabled
+    if (!this._enabled) {
+      return;
+    }
+
     const entry = {
       id: generateId(),
       timestamp: getTimestamp(),
@@ -314,10 +410,6 @@ export class Tracer {
         this.config.onError(error);
       }
     });
-
-    if (this.config.debug) {
-      console.log(`[${level.toUpperCase()}]`, message, metadata);
-    }
   }
 
   /**

@@ -12,11 +12,15 @@ export class Logger {
   private wsTransport: WebSocketTransport | null = null;
   private environment: EnvironmentInfo;
   private sessionId: string;
+  private _enabled: boolean;
 
   constructor(config: LoggerConfig) {
+    this._enabled = config.enabled ?? true;
+    
     this.config = {
       endpoint: config.endpoint,
       appName: config.appName,
+      enabled: this._enabled,
       sessionId: config.sessionId || generateId(),
       enableWebSocket: config.enableWebSocket ?? false,
       wsEndpoint: config.wsEndpoint || config.endpoint.replace(/^http/, 'ws').replace('/ingest', '/live'),
@@ -37,13 +41,42 @@ export class Logger {
       onError: this.config.onError,
     });
 
-    if (this.config.enableWebSocket) {
+    if (this.config.enableWebSocket && this._enabled) {
       this.wsTransport = new WebSocketTransport(
         this.config.wsEndpoint,
         this.config.onError
       );
       this.wsTransport.connect();
     }
+  }
+
+  /**
+   * Check if logging is enabled
+   */
+  isEnabled(): boolean {
+    return this._enabled;
+  }
+
+  /**
+   * Enable logging
+   */
+  enable(): void {
+    this._enabled = true;
+    if (this.config.enableWebSocket && !this.wsTransport) {
+      this.wsTransport = new WebSocketTransport(
+        this.config.wsEndpoint,
+        this.config.onError
+      );
+      this.wsTransport.connect();
+    }
+  }
+
+  /**
+   * Disable logging - no logs will be sent
+   */
+  disable(): void {
+    this._enabled = false;
+    this.wsTransport?.disconnect();
   }
 
   /**
@@ -82,6 +115,7 @@ export class Logger {
   child(context: Record<string, unknown>): Logger {
     const childLogger = new Logger({
       ...this.config,
+      enabled: this._enabled,
       metadata: {
         ...this.config.metadata,
         ...context,
@@ -117,6 +151,16 @@ export class Logger {
     metadata?: Record<string, unknown>,
     stackTrace?: string
   ): void {
+    // Always log to console in debug mode, even if disabled
+    if (this.config.debug) {
+      console.log(`[${level.toUpperCase()}]`, message, metadata);
+    }
+
+    // Don't send if disabled
+    if (!this._enabled) {
+      return;
+    }
+
     const entry: LogEntry = {
       id: generateId(),
       timestamp: getTimestamp(),
@@ -131,10 +175,6 @@ export class Logger {
       },
       stackTrace,
     };
-
-    if (this.config.debug) {
-      console.log(`[${level.toUpperCase()}]`, message, metadata);
-    }
 
     // Send via HTTP
     this.httpTransport.send(entry);
