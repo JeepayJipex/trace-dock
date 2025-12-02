@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue';
 import type { LogEntry } from '@/types';
 import { formatDistanceToNow, format } from 'date-fns';
+import { useAppColors } from '@/composables/useAppColors';
 
 const props = defineProps<{
   log: LogEntry;
@@ -14,6 +15,9 @@ const emit = defineEmits<{
 }>();
 
 const isExpanded = ref(false);
+const { getAppColor } = useAppColors();
+
+const appColor = computed(() => getAppColor(props.log.appName));
 
 const levelConfig = computed(() => {
   const configs = {
@@ -145,7 +149,7 @@ function handleFilterClick(event: MouseEvent, key: string, value: string) {
           <div class="flex items-center gap-2 mt-1.5 text-xs flex-wrap">
             <button 
               @click="(e) => handleFilterClick(e, 'appName', log.appName)"
-              class="text-purple-400 font-medium hover:text-purple-300 hover:underline transition-colors"
+              :class="[appColor.text, 'font-medium hover:underline transition-colors']"
               title="Click to filter by app"
             >
               {{ log.appName }}

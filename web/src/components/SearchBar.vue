@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import type { LogFilters, LogLevel } from '@/types';
 import { getSearchSuggestions } from '@/api/logs';
+import { useAppColors } from '@/composables/useAppColors';
 
 const props = defineProps<{
   apps: string[];
@@ -22,6 +23,7 @@ const suggestions = ref<{ type: string; value: string }[]>([]);
 const selectedSuggestionIndex = ref(-1);
 const searchInputRef = ref<HTMLInputElement | null>(null);
 const dropdownRef = ref<HTMLDivElement | null>(null);
+const { getAppColor } = useAppColors();
 
 const levels: { value: LogLevel; label: string; color: string }[] = [
   { value: 'error', label: 'Error', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
@@ -45,11 +47,12 @@ const activeFilters = computed(() => {
   }
   
   if (props.modelValue.appName) {
+    const appColorConfig = getAppColor(props.modelValue.appName);
     filters.push({
       key: 'appName',
       label: 'App',
       value: props.modelValue.appName,
-      color: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+      color: `${appColorConfig.bg} ${appColorConfig.text} ${appColorConfig.border}`,
     });
   }
   

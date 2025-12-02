@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { LogEntry } from '@/types';
+import { useAppColors } from '@/composables/useAppColors';
 
-defineProps<{
+const props = defineProps<{
   log: LogEntry;
 }>();
+
+const { getAppColor } = useAppColors();
+const appColor = computed(() => getAppColor(props.log.appName));
 
 function getLevelClass(level: string): string {
   const classes: Record<string, string> = {
@@ -41,7 +46,7 @@ function formatStackTrace(stack: string): string[] {
           </span>
           <span class="text-gray-400 text-sm">{{ formatTime(log.timestamp) }}</span>
         </div>
-        <span class="text-purple-400 font-medium">{{ log.appName }}</span>
+        <span :class="[appColor.text, 'font-medium']">{{ log.appName }}</span>
       </div>
       <h2 class="text-xl font-semibold text-white mt-3">{{ log.message }}</h2>
     </div>

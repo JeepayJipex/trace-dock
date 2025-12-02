@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import type { LogEntry } from '@/types';
 import { format } from 'date-fns';
+import { useAppColors } from '@/composables/useAppColors';
 
 const props = defineProps<{
   log: LogEntry | null;
@@ -15,6 +16,9 @@ const emit = defineEmits<{
 
 const activeTab = ref<'overview' | 'metadata' | 'stack' | 'environment'>('overview');
 const copied = ref(false);
+const { getAppColor } = useAppColors();
+
+const appColor = computed(() => props.log ? getAppColor(props.log.appName) : null);
 
 // Reset tab when log changes
 watch(() => props.log?.id, () => {
@@ -136,7 +140,7 @@ function handleFilterClick(key: string, value: string) {
                 <span class="text-gray-500">•</span>
                 <button 
                   @click="handleFilterClick('appName', log.appName)"
-                  class="text-purple-400 text-sm font-medium hover:text-purple-300 hover:underline"
+                  :class="[appColor?.text || 'text-purple-400', 'text-sm font-medium hover:underline']"
                   title="Click to filter by app"
                 >
                   {{ log.appName }}
