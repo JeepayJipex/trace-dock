@@ -25,6 +25,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV DB_TYPE=sqlite
+ENV DATABASE_URL=/app/data/trace-dock.sqlite
 ENV DATA_DIR=/app/data
 
 # Create data directory

@@ -1,9 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { SQLiteRepository } from './db/sqlite.repository';
+import { setRepository, closeRepository, type IRepository } from './db';
+import type { LogEntry } from './schemas';
 
-// We can't easily test the full app because it initializes DB on import
-// Instead, we test the route handlers behavior with a mock
+// Helper to create an in-memory repository for testing
+function createTestRepository(): IRepository {
+  return new SQLiteRepository(':memory:');
+}
 
 describe('Server API Routes', () => {
   describe('Health check', () => {
@@ -307,6 +312,234 @@ describe('Server API Routes', () => {
 
       const data = await res.json();
       expect(data.sessions).toHaveLength(2);
+    });
+  });
+});
+
+describe('Repository Integration', () => {
+  let repo: IRepository;
+
+  beforeEach(() => {
+    repo = createTestRepository();
+    setRepository(repo);
+  });
+
+  afterEach(() => {
+    closeRepository();
+  });
+
+  describe('Logs', () => {
+    const createTestLog = (overrides: Partial<LogEntry> = {}): LogEntry => ({
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      message: 'Test log message',
+      appName: 'test-app',
+      sessionId: 'session-1',
+      environment: { type: 'node' },
+      ...overrides,
+    });
+
+    it('should insert and retrieve a log', () => {
+      const log = createTestLog();
+      repo.insertLog(log);
+      
+      const retrieved = repo.getLogById(log.id);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.id).toBe(log.id);
+      expect(retrieved?.message).toBe(log.message);
+    });
+
+    it('should return paginated logs', () => {
+      for (let i = 0; i < 10; i++) {
+        repo.insertLog(createTestLog({ message: `Log ${i}` }));
+      }
+
+      const result = repo.getLogs({ limit: 5, offset: 0 });
+      expect(result.logs).toHaveLength(5);
+      expect(result.total).toBe(10);
+    });
+
+    it('should filter logs by level', () => {
+      repo.insertLog(createTestLog({ level: 'info' }));
+      repo.insertLog(createTestLog({ level: 'error' }));
+      repo.insertLog(createTestLog({ level: 'error' }));
+
+      const result = repo.getLogs({ level: 'error', limit: 50, offset: 0 });
+      expect(result.logs).toHaveLength(2);
+      expect(result.logs.every(l => l.level === 'error')).toBe(true);
+    });
+
+    it('should filter logs by app name', () => {
+      repo.insertLog(createTestLog({ appName: 'app-1' }));
+      repo.insertLog(createTestLog({ appName: 'app-2' }));
+      repo.insertLog(createTestLog({ appName: 'app-1' }));
+
+      const result = repo.getLogs({ appName: 'app-1', limit: 50, offset: 0 });
+      expect(result.logs).toHaveLength(2);
+    });
+
+    it('should return stats', () => {
+      repo.insertLog(createTestLog({ level: 'info', appName: 'app-1' }));
+      repo.insertLog(createTestLog({ level: 'error', appName: 'app-1' }));
+      repo.insertLog(createTestLog({ level: 'info', appName: 'app-2' }));
+
+      const stats = repo.getStats();
+      expect(stats.total).toBe(3);
+      expect(stats.byLevel.info).toBe(2);
+      expect(stats.byLevel.error).toBe(1);
+      expect(stats.byApp['app-1']).toBe(2);
+    });
+  });
+
+  describe('Error Groups', () => {
+    const createErrorLog = (message: string): LogEntry => ({
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      level: 'error',
+      message,
+      appName: 'test-app',
+      sessionId: 'session-1',
+      environment: { type: 'node' },
+      stackTrace: 'Error\n    at test (/app/test.js:1:1)',
+    });
+
+    it('should create error group for error logs', () => {
+      const log = createErrorLog('Database connection failed');
+      const result = repo.insertLog(log);
+      
+      expect(result.errorGroupId).toBeDefined();
+      
+      const group = repo.getErrorGroupById(result.errorGroupId!);
+      expect(group).not.toBeNull();
+      expect(group?.message).toBe('Database connection failed');
+    });
+
+    it('should group similar errors', () => {
+      repo.insertLog(createErrorLog('Connection failed to server'));
+      repo.insertLog(createErrorLog('Connection failed to server'));
+
+      const groups = repo.getErrorGroups({ limit: 50, offset: 0 });
+      expect(groups.total).toBe(1);
+      expect(groups.errorGroups[0].occurrenceCount).toBe(2);
+    });
+
+    it('should update error group status', () => {
+      const log = createErrorLog('Test error');
+      const result = repo.insertLog(log);
+      
+      const updated = repo.updateErrorGroupStatus(result.errorGroupId!, 'resolved');
+      expect(updated).toBe(true);
+      
+      const group = repo.getErrorGroupById(result.errorGroupId!);
+      expect(group?.status).toBe('resolved');
+    });
+  });
+
+  describe('Traces and Spans', () => {
+    it('should create and retrieve a trace', () => {
+      const trace = repo.createTrace({
+        id: crypto.randomUUID(),
+        name: 'test-operation',
+        appName: 'test-app',
+        sessionId: 'session-1',
+        startTime: new Date().toISOString(),
+        endTime: null,
+        durationMs: null,
+        status: 'running',
+      });
+
+      const retrieved = repo.getTraceById(trace.id);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.name).toBe('test-operation');
+    });
+
+    it('should create spans and update trace span count', () => {
+      const trace = repo.createTrace({
+        id: crypto.randomUUID(),
+        name: 'test-operation',
+        appName: 'test-app',
+        sessionId: 'session-1',
+        startTime: new Date().toISOString(),
+        endTime: null,
+        durationMs: null,
+        status: 'running',
+      });
+
+      repo.createSpan({
+        id: crypto.randomUUID(),
+        traceId: trace.id,
+        parentSpanId: null,
+        name: 'child-span',
+        operationType: 'http',
+        startTime: new Date().toISOString(),
+        endTime: null,
+        durationMs: null,
+        status: 'running',
+      });
+
+      const updatedTrace = repo.getTraceById(trace.id);
+      expect(updatedTrace?.spanCount).toBe(1);
+    });
+
+    it('should update trace status', () => {
+      const trace = repo.createTrace({
+        id: crypto.randomUUID(),
+        name: 'test-operation',
+        appName: 'test-app',
+        sessionId: 'session-1',
+        startTime: new Date().toISOString(),
+        endTime: null,
+        durationMs: null,
+        status: 'running',
+      });
+
+      const updated = repo.updateTrace(trace.id, {
+        status: 'completed',
+        endTime: new Date().toISOString(),
+        durationMs: 100,
+      });
+
+      expect(updated).toBe(true);
+      
+      const retrieved = repo.getTraceById(trace.id);
+      expect(retrieved?.status).toBe('completed');
+      expect(retrieved?.durationMs).toBe(100);
+    });
+  });
+
+  describe('Settings', () => {
+    it('should return default settings', () => {
+      const settings = repo.getSettings();
+      expect(settings.logsRetentionDays).toBe(7);
+      expect(settings.cleanupEnabled).toBe(true);
+    });
+
+    it('should update settings', () => {
+      const updated = repo.updateSettings({ logsRetentionDays: 14 });
+      expect(updated.logsRetentionDays).toBe(14);
+      
+      const settings = repo.getSettings();
+      expect(settings.logsRetentionDays).toBe(14);
+    });
+  });
+
+  describe('Storage Stats', () => {
+    it('should return storage stats', () => {
+      repo.insertLog({
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Test',
+        appName: 'test-app',
+        sessionId: 'session-1',
+        environment: { type: 'node' },
+      });
+
+      const stats = repo.getStorageStats();
+      expect(stats.totalLogs).toBe(1);
+      expect(stats.totalTraces).toBe(0);
+      expect(stats.databaseSizeBytes).toBeGreaterThan(0);
     });
   });
 });

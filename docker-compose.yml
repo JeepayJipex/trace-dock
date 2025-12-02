@@ -14,7 +14,10 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - DB_TYPE=${DB_TYPE:-sqlite}
+      - DATABASE_URL=${DATABASE_URL:-/app/data/trace-dock.sqlite}
       - DATA_DIR=/app/data
+      - DB_DEBUG=${DB_DEBUG:-false}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]

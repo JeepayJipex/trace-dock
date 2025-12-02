@@ -582,8 +582,29 @@ pnpm build:web
 
 ### Testing
 
+The project includes comprehensive tests for all packages using Vitest.
+
 ```bash
-# Generate test logs
+# Run all tests across the monorepo
+pnpm test:run
+
+# Run tests in watch mode
+pnpm test
+
+# Run tests for specific packages
+pnpm test:sdk      # SDK tests (44 tests)
+pnpm test:server   # Server tests (53 tests)
+pnpm test:web      # Web tests (19 tests)
+```
+
+#### Test Architecture
+
+- **SDK**: Uses MSW (Mock Service Worker) for API mocking
+- **Server**: Uses in-memory SQLite for test isolation (`:memory:`)
+- **Web**: Uses happy-dom for Vue component testing
+
+```bash
+# Generate test logs (manual testing)
 node -e "
 const { createLogger } = require('./packages/sdk/dist');
 const logger = createLogger({
@@ -602,8 +623,13 @@ logger.error('Test error', { error: new Error('Test') });
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3000` | Server port |
-| `DATA_DIR` | `./data` | SQLite database directory |
-| `DB_PATH` | `${DATA_DIR}/trace-dock.sqlite` | Database file path |
+| `DB_TYPE` | `sqlite` | Database type (`sqlite`, `postgresql`, `mysql`) |
+| `DATABASE_URL` | `./data/trace-dock.sqlite` | Database connection URL |
+| `DATA_DIR` | `./data` | SQLite database directory (legacy) |
+| `DB_PATH` | `${DATA_DIR}/trace-dock.sqlite` | Database file path (legacy) |
+| `DB_DEBUG` | `false` | Enable database debug logging |
+| `CORS_ORIGINS` | `http://localhost:5173,...` | Comma-separated allowed origins |
+| `CORS_ALLOW_ALL` | `false` | Allow all origins (use with caution) |
 
 ### Web
 
@@ -612,35 +638,160 @@ logger.error('Test error', { error: new Error('Test') });
 | `VITE_API_URL` | `/api` | API base URL |
 | `VITE_WS_URL` | Auto-detected | WebSocket URL |
 
+## 🗄️ Database Configuration
+
+Trace Dock supports multiple database backends via Drizzle ORM:
+
+### SQLite (Default)
+
+SQLite is the default database, perfect for development and small deployments.
+
+```bash
+# Default configuration - no setup needed
+DB_TYPE=sqlite
+DATABASE_URL=./data/trace-dock.sqlite
+```
+
+### PostgreSQL
+
+For production deployments with higher concurrency needs.
+
+```bash
+DB_TYPE=postgresql
+DATABASE_URL=postgres://user:password@localhost:5432/tracedock
+```
+
+Docker Compose example with PostgreSQL:
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tracedock
+      POSTGRES_USER: tracedock
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  server:
+    environment:
+      - DB_TYPE=postgresql
+      - DATABASE_URL=postgres://tracedock:secret@postgres:5432/tracedock
+```
+
+### MySQL / MariaDB
+
+```bash
+DB_TYPE=mysql
+DATABASE_URL=mysql://user:password@localhost:3306/tracedock
+```
+
+> **Note**: PostgreSQL and MySQL support requires implementing the respective repository adapters. Currently, only SQLite is fully implemented. The schema definitions for PostgreSQL and MySQL are ready in `server/src/db/schema/`.
+
 ## 🐳 Docker Configuration
+
+### Quick Start
+
+```bash
+# Build and start all services (SQLite)
+pnpm docker:up
+
+# Or using docker-compose directly
+docker-compose up -d --build
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+pnpm docker:down
+```
 
 ### Custom Configuration
 
-Create a `.env` file:
+Create a `.env` file in the root directory:
 
 ```env
-# Server
-PORT=3000
+# Server port (default: 3000)
+SERVER_PORT=3000
 
-# Web
-VITE_API_URL=/api
+# Web port (default: 8080)  
+WEB_PORT=8080
+
+# Database type: sqlite | postgresql | mysql
+DB_TYPE=sqlite
+
+# Database URL (for PostgreSQL/MySQL)
+# DATABASE_URL=postgres://user:pass@host:5432/tracedock
+
+# CORS origins
+CORS_ORIGINS=http://localhost:8080,http://localhost:3000
+```
+
+### Docker Compose with PostgreSQL
+
+Create a `docker-compose.override.yml` for PostgreSQL:
+
+```yaml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trace-dock-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tracedock
+      POSTGRES_USER: tracedock
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracedock"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DB_TYPE=postgresql
+      - DATABASE_URL=postgres://tracedock:${POSTGRES_PASSWORD:-changeme}@postgres:5432/tracedock
+
+volumes:
+  postgres-data:
+    driver: local
 ```
 
 ### Volume Mounts
 
-The SQLite database is persisted in a Docker volume:
+Data is persisted using Docker volumes:
 
 ```yaml
 volumes:
-  trace-dock-data:
+  trace-dock-data:    # SQLite database
+    driver: local
+  postgres-data:      # PostgreSQL data (if using)
     driver: local
 ```
 
 ### Health Checks
 
 Both services include health checks:
-- Server: `GET /`
-- Web: `GET /`
+- **Server**: `GET /` - Returns server status
+- **Web**: `GET /` - Returns nginx status
+
+### Building Images Separately
+
+```bash
+# Build server image
+docker build -f server/Dockerfile -t trace-dock-server .
+
+# Build web image
+docker build -f web/Dockerfile -t trace-dock-web \
+  --build-arg VITE_API_BASE_URL=/api .
+```
 
 ## 📄 License
 
