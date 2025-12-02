@@ -25,6 +25,7 @@ export class Tracer {
   private currentSpanId: string | null = null;
   private _enabled: boolean;
   private _tracingEnabled: boolean;
+  private _distributedParentSpanId: string | null = null;
 
   constructor(config: TracerConfig) {
     this._enabled = config.enabled ?? true;
@@ -94,10 +95,47 @@ export class Tracer {
   }
 
   /**
-   * Start a new trace
+   * Start a new trace or continue an existing one (for distributed tracing)
+   * @param name - The name of the trace
+   * @param options - Optional configuration
+   * @param options.traceId - An existing trace ID to continue (for distributed tracing)
+   * @param options.parentSpanId - The parent span ID from the calling service
+   * @param options.metadata - Additional metadata for this trace
    */
-  startTrace(name: string, metadata?: Record<string, unknown>): string {
-    const traceId = generateId();
+  startTrace(name: string, options?: {
+    traceId?: string;
+    parentSpanId?: string;
+    metadata?: Record<string, unknown>;
+  }): string;
+  /**
+   * @deprecated Use startTrace(name, { metadata }) instead
+   */
+  startTrace(name: string, metadata?: Record<string, unknown>): string;
+  startTrace(name: string, optionsOrMetadata?: Record<string, unknown> | {
+    traceId?: string;
+    parentSpanId?: string;
+    metadata?: Record<string, unknown>;
+  }): string {
+    // Handle both signatures for backwards compatibility
+    let existingTraceId: string | undefined;
+    let parentSpanId: string | undefined;
+    let metadata: Record<string, unknown> | undefined;
+
+    if (optionsOrMetadata) {
+      if ('traceId' in optionsOrMetadata || 'parentSpanId' in optionsOrMetadata || 'metadata' in optionsOrMetadata) {
+        // New signature with options object
+        const opts = optionsOrMetadata as { traceId?: string; parentSpanId?: string; metadata?: Record<string, unknown> };
+        existingTraceId = opts.traceId;
+        parentSpanId = opts.parentSpanId;
+        metadata = opts.metadata;
+      } else {
+        // Old signature with just metadata
+        metadata = optionsOrMetadata as Record<string, unknown>;
+      }
+    }
+
+    const traceId = existingTraceId || generateId();
+    const isDistributed = !!existingTraceId;
     
     // If tracing is disabled, return a dummy trace ID but don't send anything
     if (!this.isTracingEnabled()) {
@@ -123,6 +161,8 @@ export class Tracer {
       metadata: {
         ...this.config.metadata,
         ...metadata,
+        ...(isDistributed ? { distributed: true, originService: this.config.appName } : {}),
+        ...(parentSpanId ? { parentSpanId } : {}),
       },
     };
 
@@ -134,11 +174,17 @@ export class Tracer {
 
     this.currentTraceId = traceId;
 
+    // Store parent span ID for the first span in this service
+    if (parentSpanId) {
+      this._distributedParentSpanId = parentSpanId;
+    }
+
     // Send trace creation to server
     this.sendTrace(trace);
 
     if (this.config.debug) {
-      console.log(`[TRACE:START] ${name} (${traceId})`);
+      const mode = isDistributed ? 'CONTINUE' : 'START';
+      console.log(`[TRACE:${mode}] ${name} (${traceId})${parentSpanId ? ` parent: ${parentSpanId}` : ''}`);
     }
 
     return traceId;
@@ -231,7 +277,16 @@ export class Tracer {
 
     const startTime = getTimestamp();
     const startTimestamp = Date.now();
-    const parentSpanId = options?.parentSpanId || this.currentSpanId || null;
+    
+    // For distributed tracing: use the distributed parent span ID for the first span
+    let parentSpanId = options?.parentSpanId || this.currentSpanId || null;
+    
+    // If this is the first span and we have a distributed parent, use it
+    if (!parentSpanId && this._distributedParentSpanId) {
+      parentSpanId = this._distributedParentSpanId;
+      // Clear the distributed parent span ID after first use
+      this._distributedParentSpanId = null;
+    }
 
     const span: Span = {
       id: spanId,
@@ -437,6 +492,36 @@ export class Tracer {
    */
   getCurrentSpanId(): string | null {
     return this.currentSpanId;
+  }
+
+  /**
+   * Get the trace context for propagation to other services (distributed tracing)
+   * Returns null if no active trace
+   * 
+   * @example
+   * // Service A - calling Service B
+   * const context = tracer.getTraceContext();
+   * await fetch('http://service-b/api', {
+   *   headers: {
+   *     'x-trace-id': context?.traceId,
+   *     'x-span-id': context?.spanId,
+   *   }
+   * });
+   * 
+   * // Service B - continuing the trace
+   * const traceId = req.headers['x-trace-id'];
+   * const parentSpanId = req.headers['x-span-id'];
+   * tracer.startTrace('service-b-handler', { traceId, parentSpanId });
+   */
+  getTraceContext(): { traceId: string; spanId: string | null; sessionId: string } | null {
+    if (!this.currentTraceId) {
+      return null;
+    }
+    return {
+      traceId: this.currentTraceId,
+      spanId: this.currentSpanId,
+      sessionId: this.sessionId,
+    };
   }
 
   /**

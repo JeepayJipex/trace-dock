@@ -344,6 +344,7 @@ This is useful for:
 ```typescript
 // Trace management
 tracer.startTrace(name, metadata?): string           // Returns trace ID
+tracer.startTrace(name, options?): string            // Options: { traceId?, parentSpanId?, metadata? }
 tracer.endTrace(traceId, status): void               // Status: 'completed' | 'error'
 
 // Span management
@@ -357,6 +358,7 @@ tracer.withSpan<T>(name, fn, options?): Promise<T>
 // Context
 tracer.getCurrentTraceId(): string | null
 tracer.getCurrentSpanId(): string | null
+tracer.getTraceContext(): { traceId, spanId, sessionId } | null  // For distributed tracing
 
 // Logging within trace context
 tracer.log(level, message, metadata?): void
@@ -413,6 +415,95 @@ app.get('/users/:id', async (req, res) => {
   res.json(user);
 });
 ```
+
+### Distributed Tracing (Multi-Service)
+
+The SDK supports distributed tracing across multiple services. You can propagate trace context via HTTP headers to continue a trace in another service.
+
+#### Service A (Caller)
+
+```typescript
+import { createTracer } from '@trace-dock/sdk';
+
+const tracer = createTracer({
+  appName: 'service-a',
+  endpoint: 'http://localhost:3001/ingest',
+});
+
+async function callServiceB() {
+  tracer.startTrace('process-order');
+  
+  // Get the trace context to propagate
+  const context = tracer.getTraceContext();
+  
+  // Call Service B with trace context in headers
+  const response = await fetch('http://service-b/api/process', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-trace-id': context?.traceId || '',
+      'x-span-id': context?.spanId || '',
+    },
+    body: JSON.stringify({ orderId: 123 }),
+  });
+  
+  tracer.endTrace(context!.traceId, 'completed');
+}
+```
+
+#### Service B (Receiver)
+
+```typescript
+import express from 'express';
+import { createTracer } from '@trace-dock/sdk';
+
+const app = express();
+const tracer = createTracer({
+  appName: 'service-b',
+  endpoint: 'http://localhost:3001/ingest',
+});
+
+app.post('/api/process', async (req, res) => {
+  // Extract trace context from headers
+  const traceId = req.headers['x-trace-id'] as string;
+  const parentSpanId = req.headers['x-span-id'] as string;
+  
+  // Continue the trace from Service A
+  tracer.startTrace('service-b-handler', {
+    traceId,              // Use the same trace ID
+    parentSpanId,         // Link to the calling span
+    metadata: { receivedFrom: 'service-a' },
+  });
+  
+  // Your spans will be linked to the parent trace
+  await tracer.withSpan('process-order', async () => {
+    // ... do work ...
+  });
+  
+  tracer.endTrace(traceId, 'completed');
+  res.json({ success: true });
+});
+```
+
+#### Trace Context API
+
+```typescript
+// Get current trace context for propagation
+const context = tracer.getTraceContext();
+// Returns: { traceId: string, spanId: string | null, sessionId: string } | null
+
+// Start a trace with an existing trace ID (for distributed tracing)
+tracer.startTrace('operation-name', {
+  traceId: 'existing-trace-id',      // Continue this trace
+  parentSpanId: 'parent-span-id',    // Link to parent span from caller
+  metadata: { ... },                  // Additional metadata
+});
+```
+
+This enables you to:
+- **Track requests across services** - See the full journey of a request
+- **Visualize service dependencies** - Understand how services interact
+- **Debug distributed systems** - Find where issues occur in the chain
 
 ## Environment Detection
 
