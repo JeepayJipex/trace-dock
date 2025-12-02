@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Documentation
+    url: https://github.com/JeepayJipex/trace-dock#readme
+    about: Check out the README for setup instructions and API documentation
+  - name: 💬 Discussions
+    url: https://github.com/JeepayJipex/trace-dock/discussions
+    about: Ask questions and discuss ideas with the community
