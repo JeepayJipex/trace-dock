@@ -1,24 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
 import { RouterLink } from 'vue-router';
-import { getTraces, getTraceStats } from '@/api/traces';
-import { getApps } from '@/api/logs';
-import type { Trace, TraceFilters, TraceStats, TraceStatus } from '@/types';
+import { useTracesQuery } from '@/composables/useTracesQuery';
+import type { TraceStatus } from '@/types';
 import { formatDistanceToNow, format } from 'date-fns';
 
-const traces = ref<Trace[]>([]);
-const stats = ref<TraceStats | null>(null);
-const total = ref(0);
-const loading = ref(false);
-const error = ref<string | null>(null);
-const offset = ref(0);
-const limit = 20;
-
-const filters = ref<TraceFilters>({});
-
-const apps = ref<string[]>([]);
-
-const hasMore = computed(() => traces.value.length < total.value);
+// Use the query composable with URL sync
+const {
+  filters,
+  traces,
+  stats,
+  total,
+  apps,
+  hasMore,
+  isLoading,
+  error,
+  loadMore,
+} = useTracesQuery({ syncToUrl: true });
 
 const statusOptions: { value: TraceStatus | ''; label: string; color: string }[] = [
   { value: '', label: 'All Statuses', color: 'gray' },
@@ -77,63 +74,6 @@ function formatFullTime(timestamp: string): string {
     return timestamp;
   }
 }
-
-async function fetchTraces(append = false) {
-  loading.value = true;
-  error.value = null;
-
-  try {
-    const currentOffset = append ? offset.value : 0;
-    const response = await getTraces({ ...filters.value, limit, offset: currentOffset });
-    
-    if (append) {
-      traces.value = [...traces.value, ...response.traces];
-    } else {
-      traces.value = response.traces;
-    }
-    
-    total.value = response.total;
-    offset.value = currentOffset + response.traces.length;
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to fetch traces';
-    console.error('Error fetching traces:', err);
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function fetchStats() {
-  try {
-    stats.value = await getTraceStats();
-  } catch (err) {
-    console.error('Error fetching stats:', err);
-  }
-}
-
-async function fetchApps() {
-  try {
-    const response = await getApps();
-    apps.value = response.apps;
-  } catch (err) {
-    console.error('Error fetching apps:', err);
-  }
-}
-
-async function loadMore() {
-  if (loading.value || !hasMore.value) return;
-  await fetchTraces(true);
-}
-
-watch(filters, () => {
-  offset.value = 0;
-  fetchTraces();
-}, { deep: true });
-
-onMounted(() => {
-  fetchTraces();
-  fetchStats();
-  fetchApps();
-});
 </script>
 
 <template>
@@ -345,7 +285,7 @@ onMounted(() => {
 
       <!-- Empty State -->
       <div
-        v-if="!loading && traces.length === 0"
+        v-if="!isLoading && traces.length === 0"
         class="text-center py-12 text-gray-500"
       >
         <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -356,7 +296,7 @@ onMounted(() => {
       </div>
 
       <!-- Loading State -->
-      <div v-if="loading" class="py-8 text-center">
+      <div v-if="isLoading" class="py-8 text-center">
         <div class="inline-flex items-center gap-2 text-gray-400">
           <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -367,7 +307,7 @@ onMounted(() => {
       </div>
 
       <!-- Load More -->
-      <div v-if="hasMore && !loading" class="text-center py-4">
+      <div v-if="hasMore && !isLoading" class="text-center py-4">
         <button
           @click="loadMore"
           class="px-6 py-2 bg-dark-800 text-gray-300 rounded-lg hover:bg-dark-700 hover:text-white transition-colors"

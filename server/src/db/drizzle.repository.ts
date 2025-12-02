@@ -248,7 +248,6 @@ export class DrizzleRepository implements IRepository {
     let traceId = log.traceId || null;
     let spanId = log.spanId || null;
     let parentSpanId = log.parentSpanId || null;
-    let cleanedMetadata = log.metadata;
 
     if (log.metadata) {
       if (!traceId && typeof log.metadata.traceId === 'string') {
@@ -260,12 +259,6 @@ export class DrizzleRepository implements IRepository {
       if (!parentSpanId && typeof log.metadata.parentSpanId === 'string') {
         parentSpanId = log.metadata.parentSpanId;
       }
-
-      // Remove these fields from metadata to avoid duplication
-      if (log.metadata.traceId || log.metadata.spanId || log.metadata.parentSpanId) {
-        const { traceId: _t, spanId: _s, parentSpanId: _p, ...rest } = log.metadata;
-        cleanedMetadata = Object.keys(rest).length > 0 ? rest : undefined;
-      }
     }
 
     (this.db.insert(logs).values({
@@ -276,7 +269,7 @@ export class DrizzleRepository implements IRepository {
       appName: log.appName,
       sessionId: log.sessionId,
       environment: JSON.stringify(log.environment),
-      metadata: cleanedMetadata ? JSON.stringify(cleanedMetadata) : null,
+      metadata: log.metadata ? JSON.stringify(log.metadata) : null,
       stackTrace: log.stackTrace || null,
       context: log.context ? JSON.stringify(log.context) : null,
       errorGroupId: errorGroupId || null,

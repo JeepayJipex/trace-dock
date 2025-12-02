@@ -1,103 +1,52 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { RouterLink } from 'vue-router';
-import { getApps, getSessions } from '@/api/logs';
-import { getLogsFiltered } from '@/api/errors';
+import { useLogsQuery } from '@/composables/useLogsQuery';
 import { useWebSocket } from '@/composables/useWebSocket';
 import type { LogEntry, LogFilters } from '@/types';
 import LogList from '@/components/LogList.vue';
 import SearchBar from '@/components/SearchBar.vue';
 import LogDetailSidebar from '@/components/LogDetailSidebar.vue';
 
-const logs = ref<LogEntry[]>([]);
-const total = ref(0);
-const ignoredCount = ref(0);
-const loading = ref(false);
-const error = ref<string | null>(null);
-const offset = ref(0);
-const limit = 50;
-
-const filters = ref<LogFilters>({});
-const hideIgnoredErrors = ref(true);
-const apps = ref<string[]>([]);
-const sessions = ref<string[]>([]);
+// Use the query composable
+const {
+  filters,
+  logs,
+  total,
+  ignoredCount,
+  apps,
+  sessions,
+  hasMore,
+  isLoading,
+  isFetching,
+  hideIgnoredErrors,
+  pollingEnabled,
+  setFilters,
+  loadMore,
+  toggleHideIgnored,
+  togglePolling,
+  addLog,
+  hasActiveFilters,
+} = useLogsQuery({ syncToUrl: true });
 
 const selectedLog = ref<LogEntry | null>(null);
 const searchBarRef = ref<InstanceType<typeof SearchBar> | null>(null);
 
 // WebSocket for live updates
 const { isConnected, isLiveMode, toggleLiveMode } = useWebSocket((log: LogEntry) => {
-  // Add new log at the beginning (unless it's from an ignored error group)
-  // For now, we'll add all logs and let the filter handle it on next fetch
-  logs.value = [log, ...logs.value].slice(0, 500);
-  total.value++;
+  // Add new log via the query composable
+  if (isLiveMode.value) {
+    addLog(log);
+  }
 });
-
-const hasMore = computed(() => logs.value.length < total.value);
 
 const selectedLogIndex = computed(() => {
   if (!selectedLog.value) return -1;
   return logs.value.findIndex(l => l.id === selectedLog.value?.id);
 });
 
-async function fetchLogs(append = false) {
-  loading.value = true;
-  error.value = null;
-
-  try {
-    const currentOffset = append ? offset.value : 0;
-    const response = await getLogsFiltered(filters.value, limit, currentOffset, hideIgnoredErrors.value);
-    
-    if (append) {
-      logs.value = [...logs.value, ...response.logs];
-    } else {
-      logs.value = response.logs;
-    }
-    
-    total.value = response.total;
-    ignoredCount.value = response.ignoredCount;
-    offset.value = currentOffset + response.logs.length;
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to fetch logs';
-    console.error('Error fetching logs:', err);
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function loadMore() {
-  if (loading.value || !hasMore.value) return;
-  await fetchLogs(true);
-}
-
-async function fetchApps() {
-  try {
-    const response = await getApps();
-    apps.value = response.apps;
-  } catch (err) {
-    console.error('Error fetching apps:', err);
-  }
-}
-
-async function fetchSessions() {
-  try {
-    const response = await getSessions(filters.value.appName);
-    sessions.value = response.sessions;
-  } catch (err) {
-    console.error('Error fetching sessions:', err);
-  }
-}
-
 function handleFilterChange(newFilters: LogFilters) {
-  filters.value = newFilters;
-  offset.value = 0;
-  fetchLogs();
-}
-
-function toggleHideIgnored() {
-  hideIgnoredErrors.value = !hideIgnoredErrors.value;
-  offset.value = 0;
-  fetchLogs();
+  setFilters(newFilters);
 }
 
 function handleLogClick(log: LogEntry) {
@@ -126,11 +75,6 @@ function handleAddFilter(key: string, value: string) {
   }
 }
 
-// Watch for app filter changes to update sessions
-watch(() => filters.value.appName, () => {
-  fetchSessions();
-});
-
 // Keyboard navigation
 function handleKeydown(event: KeyboardEvent) {
   if (!selectedLog.value) return;
@@ -147,10 +91,11 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 onMounted(() => {
-  fetchLogs();
-  fetchApps();
-  fetchSessions();
   window.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
 });
 </script>
 
@@ -162,10 +107,33 @@ onMounted(() => {
         <h1 class="text-2xl font-bold text-white">Logs</h1>
         <p class="text-gray-500 text-sm mt-1">
           <span class="text-gray-400 font-medium">{{ total.toLocaleString() }}</span> logs total
+          <span v-if="isFetching && !isLoading" class="ml-2 text-blue-400">
+            <svg class="inline w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </span>
         </p>
       </div>
       
       <div class="flex items-center gap-3">
+        <!-- Polling Toggle -->
+        <button
+          @click="togglePolling"
+          :class="[
+            'flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm',
+            pollingEnabled
+              ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20'
+              : 'bg-dark-800/50 text-gray-400 border border-dark-700/50 hover:bg-dark-700/50'
+          ]"
+          title="Auto-refresh every 5 seconds"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          {{ pollingEnabled ? 'Auto' : 'Manual' }}
+        </button>
+
         <!-- Live Mode Toggle -->
         <button
           @click="toggleLiveMode"
@@ -214,6 +182,14 @@ onMounted(() => {
       @update:model-value="handleFilterChange"
     />
 
+    <!-- Active Filters Indicator -->
+    <div v-if="hasActiveFilters" class="flex items-center gap-2 text-sm text-blue-400">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+      </svg>
+      <span>Filters synced to URL - share this link!</span>
+    </div>
+
     <!-- Hide Ignored Toggle + Ignored Count Banner -->
     <div class="flex items-center justify-between bg-dark-900/30 border border-dark-700/30 rounded-lg px-4 py-3">
       <div class="flex items-center gap-3">
@@ -242,21 +218,10 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Error -->
-    <div 
-      v-if="error" 
-      class="flex items-center gap-3 bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl"
-    >
-      <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
-      </svg>
-      <span>{{ error }}</span>
-    </div>
-
     <!-- Logs List -->
     <LogList
       :logs="logs"
-      :loading="loading"
+      :loading="isLoading"
       :has-more="hasMore"
       :selected-log-id="selectedLog?.id"
       @load-more="loadMore"

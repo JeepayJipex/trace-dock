@@ -1,28 +1,34 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
-import { RouterLink } from 'vue-router';
-import { getErrorGroups, getErrorGroupStats, updateErrorGroupStatus } from '@/api/errors';
-import { getApps } from '@/api/logs';
-import type { ErrorGroup, ErrorGroupFilters, ErrorGroupStats, ErrorGroupStatus } from '@/types';
+import { ref, onMounted } from 'vue';
+import { RouterLink, useRoute } from 'vue-router';
+import { useErrorGroupsQuery } from '@/composables/useErrorGroupsQuery';
+import type { ErrorGroupStatus } from '@/types';
 import { formatDistanceToNow, format } from 'date-fns';
 
-const errorGroups = ref<ErrorGroup[]>([]);
-const stats = ref<ErrorGroupStats | null>(null);
-const total = ref(0);
-const loading = ref(false);
-const error = ref<string | null>(null);
-const offset = ref(0);
-const limit = 20;
+// Use the query composable with URL sync
+const {
+  filters,
+  errorGroups,
+  stats,
+  total,
+  apps,
+  hasMore,
+  isLoading,
+  error,
+  updateFilter,
+  loadMore,
+  updateStatus,
+} = useErrorGroupsQuery({ syncToUrl: true });
 
-const filters = ref<ErrorGroupFilters>({
-  sortBy: 'last_seen',
-  sortOrder: 'desc',
+// Initialize status filter from URL if present
+const route = useRoute();
+onMounted(() => {
+  if (route.query.status) {
+    updateFilter('status', route.query.status as ErrorGroupStatus);
+  }
 });
 
-const apps = ref<string[]>([]);
 const selectedGroups = ref<Set<string>>(new Set());
-
-const hasMore = computed(() => errorGroups.value.length < total.value);
 
 const statusOptions: { value: ErrorGroupStatus | ''; label: string; color: string }[] = [
   { value: '', label: 'All Statuses', color: 'gray' },
@@ -68,88 +74,16 @@ function getStatusConfig(status: ErrorGroupStatus) {
   return configs[status];
 }
 
-async function fetchErrorGroups(append = false) {
-  loading.value = true;
-  error.value = null;
-
-  try {
-    const currentOffset = append ? offset.value : 0;
-    const response = await getErrorGroups(filters.value, limit, currentOffset);
-    
-    if (append) {
-      errorGroups.value = [...errorGroups.value, ...response.errorGroups];
-    } else {
-      errorGroups.value = response.errorGroups;
-    }
-    
-    total.value = response.total;
-    offset.value = currentOffset + response.errorGroups.length;
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to fetch error groups';
-    console.error('Error fetching error groups:', err);
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function fetchStats() {
-  try {
-    stats.value = await getErrorGroupStats();
-  } catch (err) {
-    console.error('Error fetching stats:', err);
-  }
-}
-
-async function fetchApps() {
-  try {
-    const response = await getApps();
-    apps.value = response.apps;
-  } catch (err) {
-    console.error('Error fetching apps:', err);
-  }
-}
-
-async function loadMore() {
-  if (loading.value || !hasMore.value) return;
-  await fetchErrorGroups(true);
-}
-
 async function handleStatusChange(groupId: string, newStatus: ErrorGroupStatus) {
-  try {
-    await updateErrorGroupStatus(groupId, newStatus);
-    // Update local state
-    const group = errorGroups.value.find(g => g.id === groupId);
-    if (group) {
-      group.status = newStatus;
-    }
-    // Refresh stats
-    await fetchStats();
-  } catch (err) {
-    console.error('Error updating status:', err);
-  }
+  await updateStatus(groupId, newStatus);
 }
 
 async function handleBulkStatusChange(newStatus: ErrorGroupStatus) {
   if (selectedGroups.value.size === 0) return;
   
-  try {
-    const promises = Array.from(selectedGroups.value).map(id => 
-      updateErrorGroupStatus(id, newStatus)
-    );
-    await Promise.all(promises);
-    
-    // Update local state
-    errorGroups.value.forEach(group => {
-      if (selectedGroups.value.has(group.id)) {
-        group.status = newStatus;
-      }
-    });
-    
-    selectedGroups.value.clear();
-    await fetchStats();
-  } catch (err) {
-    console.error('Error updating statuses:', err);
-  }
+  const promises = Array.from(selectedGroups.value).map(id => updateStatus(id, newStatus));
+  await Promise.all(promises);
+  selectedGroups.value.clear();
 }
 
 function toggleSelectAll() {
@@ -188,17 +122,6 @@ function truncateMessage(message: string, maxLength = 100): string {
   const firstLine = message.split('\n')[0];
   return firstLine.length > maxLength ? firstLine.slice(0, maxLength) + '...' : firstLine;
 }
-
-watch(filters, () => {
-  offset.value = 0;
-  fetchErrorGroups();
-}, { deep: true });
-
-onMounted(() => {
-  fetchErrorGroups();
-  fetchStats();
-  fetchApps();
-});
 </script>
 
 <template>
@@ -441,7 +364,7 @@ onMounted(() => {
 
       <!-- Empty State -->
       <div
-        v-if="!loading && errorGroups.length === 0"
+        v-if="!isLoading && errorGroups.length === 0"
         class="text-center py-12 text-gray-500"
       >
         <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -452,7 +375,7 @@ onMounted(() => {
       </div>
 
       <!-- Loading State -->
-      <div v-if="loading" class="py-8 text-center">
+      <div v-if="isLoading" class="py-8 text-center">
         <div class="inline-flex items-center gap-2 text-gray-400">
           <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -463,7 +386,7 @@ onMounted(() => {
       </div>
 
       <!-- Load More -->
-      <div v-if="hasMore && !loading" class="text-center py-4">
+      <div v-if="hasMore && !isLoading" class="text-center py-4">
         <button
           @click="loadMore"
           class="px-6 py-2 bg-dark-800 text-gray-300 rounded-lg hover:bg-dark-700 hover:text-white transition-colors"
