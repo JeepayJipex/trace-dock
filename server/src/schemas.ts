@@ -24,6 +24,9 @@ export const LogEntrySchema = z.object({
   stackTrace: z.string().optional(),
   context: z.record(z.unknown()).optional(),
   errorGroupId: z.string().optional(),
+  traceId: z.string().optional(),
+  spanId: z.string().optional(),
+  parentSpanId: z.string().optional(),
 });
 
 export const LogQuerySchema = z.object({
@@ -33,6 +36,7 @@ export const LogQuerySchema = z.object({
   search: z.string().optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
+  traceId: z.string().optional(),
   limit: z.coerce.number().min(1).max(1000).default(50),
   offset: z.coerce.number().min(0).default(0),
 });
@@ -67,6 +71,56 @@ export const UpdateErrorGroupStatusSchema = z.object({
   status: ErrorGroupStatusSchema,
 });
 
+// Trace status enum
+export const TraceStatusSchema = z.enum(['ok', 'error', 'unset']);
+
+// Span schema
+export const SpanSchema = z.object({
+  id: z.string().uuid(),
+  traceId: z.string(),
+  spanId: z.string(),
+  parentSpanId: z.string().nullable(),
+  operationName: z.string(),
+  serviceName: z.string(),
+  startTime: z.string().datetime(),
+  endTime: z.string().datetime().nullable(),
+  durationMs: z.number().nullable(),
+  status: TraceStatusSchema,
+  tags: z.record(z.unknown()).optional(),
+  logs: z.array(z.object({
+    timestamp: z.string().datetime(),
+    message: z.string(),
+    level: LogLevelSchema.optional(),
+  })).optional(),
+});
+
+// Trace schema (aggregated view of spans)
+export const TraceSchema = z.object({
+  traceId: z.string(),
+  rootSpan: SpanSchema.optional(),
+  serviceName: z.string(),
+  operationName: z.string(),
+  startTime: z.string().datetime(),
+  endTime: z.string().datetime().nullable(),
+  durationMs: z.number().nullable(),
+  spanCount: z.number(),
+  errorCount: z.number(),
+  status: TraceStatusSchema,
+});
+
+export const TraceQuerySchema = z.object({
+  serviceName: z.string().optional(),
+  operationName: z.string().optional(),
+  status: TraceStatusSchema.optional(),
+  minDuration: z.coerce.number().optional(),
+  maxDuration: z.coerce.number().optional(),
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional(),
+  search: z.string().optional(),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  offset: z.coerce.number().min(0).default(0),
+});
+
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 export type EnvironmentInfo = z.infer<typeof EnvironmentInfoSchema>;
 export type LogEntry = z.infer<typeof LogEntrySchema>;
@@ -74,3 +128,7 @@ export type LogQuery = z.infer<typeof LogQuerySchema>;
 export type ErrorGroupStatus = z.infer<typeof ErrorGroupStatusSchema>;
 export type ErrorGroup = z.infer<typeof ErrorGroupSchema>;
 export type ErrorGroupQuery = z.infer<typeof ErrorGroupQuerySchema>;
+export type TraceStatus = z.infer<typeof TraceStatusSchema>;
+export type Span = z.infer<typeof SpanSchema>;
+export type Trace = z.infer<typeof TraceSchema>;
+export type TraceQuery = z.infer<typeof TraceQuerySchema>;

@@ -1,5 +1,7 @@
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+export type TraceStatus = 'running' | 'completed' | 'error';
+
 export interface LogEntry {
   id: string;
   timestamp: string;
@@ -11,6 +13,9 @@ export interface LogEntry {
   metadata?: Record<string, unknown>;
   stackTrace?: string;
   context?: Record<string, unknown>;
+  traceId?: string;
+  spanId?: string;
+  parentSpanId?: string;
 }
 
 export interface EnvironmentInfo {
@@ -21,6 +26,31 @@ export interface EnvironmentInfo {
   platform?: string;
   arch?: string;
   tauriVersion?: string;
+}
+
+export interface Trace {
+  id: string;
+  name: string;
+  appName: string;
+  sessionId: string;
+  startTime: string;
+  endTime: string | null;
+  durationMs: number | null;
+  status: TraceStatus;
+  metadata?: Record<string, unknown>;
+}
+
+export interface Span {
+  id: string;
+  traceId: string;
+  parentSpanId: string | null;
+  name: string;
+  operationType: string | null;
+  startTime: string;
+  endTime: string | null;
+  durationMs: number | null;
+  status: TraceStatus;
+  metadata?: Record<string, unknown>;
 }
 
 export interface LoggerConfig {
@@ -68,6 +98,13 @@ export interface LoggerConfig {
    * Default metadata to include with all log entries.
    */
   metadata?: Record<string, unknown>;
+}
+
+export interface TracerConfig extends LoggerConfig {
+  /**
+   * Auto-end spans that haven't been ended after this duration (ms)
+   */
+  spanTimeout?: number;
 }
 
 export interface TransportOptions {

@@ -1,5 +1,6 @@
 // Main exports
 export { Logger, createLogger } from './logger';
+export { Tracer, createTracer } from './tracer';
 
 // Types
 export type {
@@ -8,6 +9,10 @@ export type {
   LoggerConfig,
   EnvironmentInfo,
   TransportOptions,
+  TracerConfig,
+  Trace,
+  Span,
+  TraceStatus,
 } from './types';
 
 // Utilities

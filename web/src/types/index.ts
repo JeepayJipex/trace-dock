@@ -88,3 +88,66 @@ export interface ErrorGroupStats {
   byApp: Record<string, number>;
   recentTrend: { date: string; count: number }[];
 }
+
+// ==================== Traces ====================
+
+export type TraceStatus = 'running' | 'completed' | 'error';
+
+export interface Trace {
+  id: string;
+  name: string;
+  appName: string;
+  sessionId: string;
+  startTime: string;
+  endTime: string | null;
+  durationMs: number | null;
+  status: TraceStatus;
+  spanCount: number;
+  errorCount: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface Span {
+  id: string;
+  traceId: string;
+  parentSpanId: string | null;
+  name: string;
+  operationType: string | null;
+  startTime: string;
+  endTime: string | null;
+  durationMs: number | null;
+  status: TraceStatus;
+  metadata?: Record<string, unknown>;
+}
+
+export interface TracesResponse {
+  traces: Trace[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface TraceWithDetails {
+  trace: Trace;
+  spans: Span[];
+  logs: LogEntry[];
+}
+
+export interface TraceFilters {
+  appName?: string;
+  sessionId?: string;
+  status?: TraceStatus;
+  name?: string;
+  minDuration?: number;
+  maxDuration?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface TraceStats {
+  totalTraces: number;
+  avgDurationMs: number;
+  byStatus: Record<TraceStatus, number>;
+  byApp: Record<string, number>;
+  recentTrend: { date: string; count: number; avgDuration: number }[];
+}

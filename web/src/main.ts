@@ -26,6 +26,16 @@ const router = createRouter({
       name: 'error-group-detail',
       component: () => import('./views/ErrorGroupDetailView.vue'),
     },
+    {
+      path: '/traces',
+      name: 'traces',
+      component: () => import('./views/TracesView.vue'),
+    },
+    {
+      path: '/traces/:id',
+      name: 'trace-detail',
+      component: () => import('./views/TraceDetailView.vue'),
+    },
   ],
 });
 

@@ -53,6 +53,76 @@ if (!hasErrorGroupId) {
 // Create index for error_group_id (will be ignored if already exists)
 db.exec(`CREATE INDEX IF NOT EXISTS idx_logs_error_group_id ON logs(error_group_id)`);
 
+// Migration: Add trace_id and span_id columns if they don't exist
+const columnsAfterMigration = db.prepare("PRAGMA table_info(logs)").all() as { name: string }[];
+const hasTraceId = columnsAfterMigration.some(col => col.name === 'trace_id');
+const hasSpanId = columnsAfterMigration.some(col => col.name === 'span_id');
+const hasParentSpanId = columnsAfterMigration.some(col => col.name === 'parent_span_id');
+
+if (!hasTraceId) {
+  console.log('Migrating database: adding trace_id column to logs table...');
+  db.exec(`ALTER TABLE logs ADD COLUMN trace_id TEXT`);
+}
+if (!hasSpanId) {
+  console.log('Migrating database: adding span_id column to logs table...');
+  db.exec(`ALTER TABLE logs ADD COLUMN span_id TEXT`);
+}
+if (!hasParentSpanId) {
+  console.log('Migrating database: adding parent_span_id column to logs table...');
+  db.exec(`ALTER TABLE logs ADD COLUMN parent_span_id TEXT`);
+}
+
+// Create indexes for trace columns
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_logs_trace_id ON logs(trace_id);
+  CREATE INDEX IF NOT EXISTS idx_logs_span_id ON logs(span_id);
+`);
+
+// Create traces table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS traces (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    app_name TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT,
+    duration_ms INTEGER,
+    status TEXT DEFAULT 'running',
+    span_count INTEGER DEFAULT 0,
+    error_count INTEGER DEFAULT 0,
+    metadata TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_traces_app_name ON traces(app_name);
+  CREATE INDEX IF NOT EXISTS idx_traces_session_id ON traces(session_id);
+  CREATE INDEX IF NOT EXISTS idx_traces_start_time ON traces(start_time DESC);
+  CREATE INDEX IF NOT EXISTS idx_traces_status ON traces(status);
+`);
+
+// Create spans table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS spans (
+    id TEXT PRIMARY KEY,
+    trace_id TEXT NOT NULL,
+    parent_span_id TEXT,
+    name TEXT NOT NULL,
+    operation_type TEXT,
+    start_time TEXT NOT NULL,
+    end_time TEXT,
+    duration_ms INTEGER,
+    status TEXT DEFAULT 'running',
+    metadata TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (trace_id) REFERENCES traces(id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_spans_trace_id ON spans(trace_id);
+  CREATE INDEX IF NOT EXISTS idx_spans_parent_span_id ON spans(parent_span_id);
+  CREATE INDEX IF NOT EXISTS idx_spans_start_time ON spans(start_time);
+`);
+
 // Create error_groups table
 db.exec(`
   -- Error groups table for grouping similar errors
@@ -749,6 +819,374 @@ export function getLogsWithIgnoredInfo(params: LogsQueryParams & { excludeIgnore
     ...baseResult,
     ignoredCount: 0,
   };
+}
+
+// ==================== Traces ====================
+
+export type TraceStatus = 'running' | 'completed' | 'error';
+
+export interface Trace {
+  id: string;
+  name: string;
+  appName: string;
+  sessionId: string;
+  startTime: string;
+  endTime: string | null;
+  durationMs: number | null;
+  status: TraceStatus;
+  spanCount: number;
+  errorCount: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface Span {
+  id: string;
+  traceId: string;
+  parentSpanId: string | null;
+  name: string;
+  operationType: string | null;
+  startTime: string;
+  endTime: string | null;
+  durationMs: number | null;
+  status: TraceStatus;
+  metadata?: Record<string, unknown>;
+}
+
+export interface TracesQueryParams {
+  appName?: string;
+  sessionId?: string;
+  status?: TraceStatus;
+  name?: string;
+  minDuration?: number;
+  maxDuration?: number;
+  startDate?: string;
+  endDate?: string;
+  limit: number;
+  offset: number;
+}
+
+export interface PaginatedTraces {
+  traces: Trace[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface TraceStats {
+  totalTraces: number;
+  avgDurationMs: number;
+  byStatus: Record<TraceStatus, number>;
+  byApp: Record<string, number>;
+  recentTrend: { date: string; count: number; avgDuration: number }[];
+}
+
+function parseTraceRow(row: Record<string, unknown>): Trace {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    appName: row.app_name as string,
+    sessionId: row.session_id as string,
+    startTime: row.start_time as string,
+    endTime: row.end_time as string | null,
+    durationMs: row.duration_ms as number | null,
+    status: row.status as TraceStatus,
+    spanCount: row.span_count as number,
+    errorCount: row.error_count as number,
+    metadata: row.metadata ? JSON.parse(row.metadata as string) : undefined,
+  };
+}
+
+function parseSpanRow(row: Record<string, unknown>): Span {
+  return {
+    id: row.id as string,
+    traceId: row.trace_id as string,
+    parentSpanId: row.parent_span_id as string | null,
+    name: row.name as string,
+    operationType: row.operation_type as string | null,
+    startTime: row.start_time as string,
+    endTime: row.end_time as string | null,
+    durationMs: row.duration_ms as number | null,
+    status: row.status as TraceStatus,
+    metadata: row.metadata ? JSON.parse(row.metadata as string) : undefined,
+  };
+}
+
+export function getTraces(params: TracesQueryParams): PaginatedTraces {
+  const conditions: string[] = [];
+  const values: unknown[] = [];
+
+  if (params.appName) {
+    conditions.push('app_name = ?');
+    values.push(params.appName);
+  }
+
+  if (params.sessionId) {
+    conditions.push('session_id = ?');
+    values.push(params.sessionId);
+  }
+
+  if (params.status) {
+    conditions.push('status = ?');
+    values.push(params.status);
+  }
+
+  if (params.name) {
+    conditions.push('name LIKE ?');
+    values.push(`%${params.name}%`);
+  }
+
+  if (params.minDuration !== undefined) {
+    conditions.push('duration_ms >= ?');
+    values.push(params.minDuration);
+  }
+
+  if (params.maxDuration !== undefined) {
+    conditions.push('duration_ms <= ?');
+    values.push(params.maxDuration);
+  }
+
+  if (params.startDate) {
+    conditions.push('start_time >= ?');
+    values.push(params.startDate);
+  }
+
+  if (params.endDate) {
+    conditions.push('start_time <= ?');
+    values.push(params.endDate);
+  }
+
+  let query = 'SELECT * FROM traces';
+  let countQuery = 'SELECT COUNT(*) as total FROM traces';
+
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+    countQuery += ' WHERE ' + conditions.join(' AND ');
+  }
+
+  query += ' ORDER BY start_time DESC LIMIT ? OFFSET ?';
+
+  const countStmt = db.prepare(countQuery);
+  const queryStmt = db.prepare(query);
+
+  const total = (countStmt.get(...values) as { total: number }).total;
+  const rows = queryStmt.all(...values, params.limit, params.offset) as Record<string, unknown>[];
+  const traces = rows.map(parseTraceRow);
+
+  return {
+    traces,
+    total,
+    limit: params.limit,
+    offset: params.offset,
+  };
+}
+
+export function getTraceById(id: string): Trace | null {
+  const row = db.prepare('SELECT * FROM traces WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  return row ? parseTraceRow(row) : null;
+}
+
+export function getSpansByTraceId(traceId: string): Span[] {
+  const rows = db.prepare(`
+    SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time ASC
+  `).all(traceId) as Record<string, unknown>[];
+  return rows.map(parseSpanRow);
+}
+
+export function getSpanById(id: string): Span | null {
+  const row = db.prepare('SELECT * FROM spans WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  return row ? parseSpanRow(row) : null;
+}
+
+export function createTrace(trace: Omit<Trace, 'spanCount' | 'errorCount'>): Trace {
+  const stmt = db.prepare(`
+    INSERT INTO traces (id, name, app_name, session_id, start_time, end_time, duration_ms, status, metadata)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(
+    trace.id,
+    trace.name,
+    trace.appName,
+    trace.sessionId,
+    trace.startTime,
+    trace.endTime,
+    trace.durationMs,
+    trace.status,
+    trace.metadata ? JSON.stringify(trace.metadata) : null
+  );
+
+  return {
+    ...trace,
+    spanCount: 0,
+    errorCount: 0,
+  };
+}
+
+export function updateTrace(id: string, updates: Partial<Pick<Trace, 'endTime' | 'durationMs' | 'status' | 'metadata'>>): boolean {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+
+  if (updates.endTime !== undefined) {
+    sets.push('end_time = ?');
+    values.push(updates.endTime);
+  }
+
+  if (updates.durationMs !== undefined) {
+    sets.push('duration_ms = ?');
+    values.push(updates.durationMs);
+  }
+
+  if (updates.status !== undefined) {
+    sets.push('status = ?');
+    values.push(updates.status);
+  }
+
+  if (updates.metadata !== undefined) {
+    sets.push('metadata = ?');
+    values.push(JSON.stringify(updates.metadata));
+  }
+
+  if (sets.length === 0) return false;
+
+  values.push(id);
+  const result = db.prepare(`UPDATE traces SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+  return result.changes > 0;
+}
+
+export function createSpan(span: Span): Span {
+  const stmt = db.prepare(`
+    INSERT INTO spans (id, trace_id, parent_span_id, name, operation_type, start_time, end_time, duration_ms, status, metadata)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(
+    span.id,
+    span.traceId,
+    span.parentSpanId,
+    span.name,
+    span.operationType,
+    span.startTime,
+    span.endTime,
+    span.durationMs,
+    span.status,
+    span.metadata ? JSON.stringify(span.metadata) : null
+  );
+
+  // Update trace span count
+  db.prepare(`
+    UPDATE traces SET span_count = span_count + 1 WHERE id = ?
+  `).run(span.traceId);
+
+  return span;
+}
+
+export function updateSpan(id: string, updates: Partial<Pick<Span, 'endTime' | 'durationMs' | 'status' | 'metadata'>>): boolean {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+
+  if (updates.endTime !== undefined) {
+    sets.push('end_time = ?');
+    values.push(updates.endTime);
+  }
+
+  if (updates.durationMs !== undefined) {
+    sets.push('duration_ms = ?');
+    values.push(updates.durationMs);
+  }
+
+  if (updates.status !== undefined) {
+    sets.push('status = ?');
+    values.push(updates.status);
+  }
+
+  if (updates.metadata !== undefined) {
+    sets.push('metadata = ?');
+    values.push(JSON.stringify(updates.metadata));
+  }
+
+  if (sets.length === 0) return false;
+
+  values.push(id);
+  const span = getSpanById(id);
+  const result = db.prepare(`UPDATE spans SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+
+  // Update trace error count if span status changed to error
+  if (result.changes > 0 && span && updates.status === 'error') {
+    db.prepare(`
+      UPDATE traces SET error_count = error_count + 1 WHERE id = ?
+    `).run(span.traceId);
+  }
+
+  return result.changes > 0;
+}
+
+export function getTraceStats(): TraceStats {
+  // Total traces
+  const totalTraces = (db.prepare('SELECT COUNT(*) as count FROM traces').get() as { count: number }).count;
+
+  // Average duration
+  const avgResult = db.prepare(`
+    SELECT AVG(duration_ms) as avg FROM traces WHERE duration_ms IS NOT NULL
+  `).get() as { avg: number | null };
+  const avgDurationMs = avgResult.avg || 0;
+
+  // By status
+  const byStatusRows = db.prepare(`
+    SELECT status, COUNT(*) as count FROM traces GROUP BY status
+  `).all() as { status: TraceStatus; count: number }[];
+  const byStatus: Record<TraceStatus, number> = {
+    running: 0,
+    completed: 0,
+    error: 0,
+    ...Object.fromEntries(byStatusRows.map(r => [r.status, r.count])),
+  };
+
+  // By app
+  const byAppRows = db.prepare(`
+    SELECT app_name, COUNT(*) as count FROM traces GROUP BY app_name
+  `).all() as { app_name: string; count: number }[];
+  const byApp = Object.fromEntries(byAppRows.map(r => [r.app_name, r.count]));
+
+  // Recent trend (last 7 days)
+  const recentTrendRows = db.prepare(`
+    SELECT 
+      DATE(start_time) as date, 
+      COUNT(*) as count,
+      AVG(duration_ms) as avgDuration
+    FROM traces
+    WHERE start_time >= datetime('now', '-7 days')
+    GROUP BY DATE(start_time)
+    ORDER BY date ASC
+  `).all() as { date: string; count: number; avgDuration: number | null }[];
+
+  return {
+    totalTraces,
+    avgDurationMs,
+    byStatus,
+    byApp,
+    recentTrend: recentTrendRows.map(r => ({
+      date: r.date,
+      count: r.count,
+      avgDuration: r.avgDuration || 0,
+    })),
+  };
+}
+
+export function getLogsByTraceId(traceId: string, limit = 100): LogEntry[] {
+  const rows = db.prepare(`
+    SELECT * FROM logs WHERE trace_id = ? ORDER BY timestamp ASC LIMIT ?
+  `).all(traceId, limit) as Record<string, unknown>[];
+  return rows.map(parseLogRow);
+}
+
+export function getTraceWithDetails(id: string): { trace: Trace; spans: Span[]; logs: LogEntry[] } | null {
+  const trace = getTraceById(id);
+  if (!trace) return null;
+
+  const spans = getSpansByTraceId(id);
+  const logs = getLogsByTraceId(id);
+
+  return { trace, spans, logs };
 }
 
 export { db };

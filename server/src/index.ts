@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import type { WSContext, WSEvents } from 'hono/ws';
-import { LogEntrySchema, LogQuerySchema, ErrorGroupQuerySchema, UpdateErrorGroupStatusSchema, type LogEntry } from './schemas';
+import { LogEntrySchema, LogQuerySchema, ErrorGroupQuerySchema, UpdateErrorGroupStatusSchema, TraceQuerySchema, type LogEntry } from './schemas';
 import { 
   insertLogEntry, 
   getLogs, 
@@ -20,6 +20,17 @@ import {
   getErrorGroupOccurrences,
   getErrorGroupStats,
   getLogsWithIgnoredInfo,
+  getTraces,
+  getTraceById,
+  getSpansByTraceId,
+  createTrace,
+  updateTrace,
+  createSpan,
+  updateSpan,
+  getTraceStats,
+  getTraceWithDetails,
+  type Trace,
+  type Span,
 } from './db';
 
 const app = new Hono();
@@ -349,6 +360,207 @@ app.get('/logs-filtered', async (c) => {
     return c.json(logs);
   } catch (error) {
     console.error('Error fetching filtered logs:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// ==================== Traces API ====================
+
+// Get traces with pagination and filtering
+app.get('/traces', async (c) => {
+  try {
+    const query = c.req.query();
+    const result = TraceQuerySchema.safeParse({
+      serviceName: query.serviceName || query.appName,
+      operationName: query.operationName || query.name,
+      status: query.status,
+      minDuration: query.minDuration,
+      maxDuration: query.maxDuration,
+      startDate: query.startDate,
+      endDate: query.endDate,
+      search: query.search,
+      limit: query.limit,
+      offset: query.offset,
+    });
+
+    if (!result.success) {
+      return c.json(
+        { error: 'Invalid query parameters', details: result.error.flatten() },
+        400
+      );
+    }
+
+    // Map schema params to DB params
+    const traces = getTraces({
+      appName: result.data.serviceName,
+      name: result.data.operationName,
+      status: result.data.status as 'running' | 'completed' | 'error' | undefined,
+      minDuration: result.data.minDuration,
+      maxDuration: result.data.maxDuration,
+      startDate: result.data.startDate,
+      endDate: result.data.endDate,
+      limit: result.data.limit,
+      offset: result.data.offset,
+    });
+    return c.json(traces);
+  } catch (error) {
+    console.error('Error fetching traces:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Get trace statistics - MUST be before /traces/:id
+app.get('/traces/stats', async (c) => {
+  try {
+    const stats = getTraceStats();
+    return c.json(stats);
+  } catch (error) {
+    console.error('Error fetching trace stats:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Get single trace by ID with spans and logs
+app.get('/traces/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const traceDetails = getTraceWithDetails(id);
+
+    if (!traceDetails) {
+      return c.json({ error: 'Trace not found' }, 404);
+    }
+
+    return c.json(traceDetails);
+  } catch (error) {
+    console.error('Error fetching trace:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Get spans for a trace
+app.get('/traces/:id/spans', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const trace = getTraceById(id);
+
+    if (!trace) {
+      return c.json({ error: 'Trace not found' }, 404);
+    }
+
+    const spans = getSpansByTraceId(id);
+    return c.json({ spans });
+  } catch (error) {
+    console.error('Error fetching trace spans:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Create a new trace
+app.post('/traces', async (c) => {
+  try {
+    const body = await c.req.json();
+    
+    const trace: Omit<Trace, 'spanCount' | 'errorCount'> = {
+      id: body.id || crypto.randomUUID(),
+      name: body.name,
+      appName: body.appName || body.serviceName,
+      sessionId: body.sessionId,
+      startTime: body.startTime || new Date().toISOString(),
+      endTime: body.endTime || null,
+      durationMs: body.durationMs || null,
+      status: body.status || 'running',
+      metadata: body.metadata,
+    };
+
+    const created = createTrace(trace);
+    return c.json(created, 201);
+  } catch (error) {
+    console.error('Error creating trace:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Update a trace (end it or change status)
+app.patch('/traces/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+
+    const trace = getTraceById(id);
+    if (!trace) {
+      return c.json({ error: 'Trace not found' }, 404);
+    }
+
+    const updated = updateTrace(id, {
+      endTime: body.endTime,
+      durationMs: body.durationMs,
+      status: body.status,
+      metadata: body.metadata,
+    });
+
+    if (!updated) {
+      return c.json({ error: 'No updates applied' }, 400);
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error updating trace:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Create a new span
+app.post('/spans', async (c) => {
+  try {
+    const body = await c.req.json();
+    
+    const span: Span = {
+      id: body.id || crypto.randomUUID(),
+      traceId: body.traceId,
+      parentSpanId: body.parentSpanId || null,
+      name: body.name,
+      operationType: body.operationType || null,
+      startTime: body.startTime || new Date().toISOString(),
+      endTime: body.endTime || null,
+      durationMs: body.durationMs || null,
+      status: body.status || 'running',
+      metadata: body.metadata,
+    };
+
+    // Validate trace exists
+    const trace = getTraceById(span.traceId);
+    if (!trace) {
+      return c.json({ error: 'Trace not found' }, 404);
+    }
+
+    const created = createSpan(span);
+    return c.json(created, 201);
+  } catch (error) {
+    console.error('Error creating span:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Update a span (end it or change status)
+app.patch('/spans/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+
+    const updated = updateSpan(id, {
+      endTime: body.endTime,
+      durationMs: body.durationMs,
+      status: body.status,
+      metadata: body.metadata,
+    });
+
+    if (!updated) {
+      return c.json({ error: 'Span not found or no updates applied' }, 404);
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error updating span:', error);
     return c.json({ error: 'Internal server error' }, 500);
   }
 });

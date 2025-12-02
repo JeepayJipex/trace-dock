@@ -2,11 +2,13 @@
 import { ref, computed, onMounted } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { getErrorGroupStats } from '@/api/errors';
+import { getTraceStats } from '@/api/traces';
 
 const route = useRoute();
 
 const isConnected = ref(false);
 const unreviewedCount = ref(0);
+const runningTracesCount = ref(0);
 
 const connectionStatusClass = computed(() => {
   return isConnected.value
@@ -22,6 +24,10 @@ const isErrorsActive = computed(() => {
   return route.path.startsWith('/errors');
 });
 
+const isTracesActive = computed(() => {
+  return route.path.startsWith('/traces');
+});
+
 async function fetchErrorStats() {
   try {
     const stats = await getErrorGroupStats();
@@ -31,10 +37,23 @@ async function fetchErrorStats() {
   }
 }
 
+async function fetchTraceStats() {
+  try {
+    const stats = await getTraceStats();
+    runningTracesCount.value = stats.byStatus.running || 0;
+  } catch (err) {
+    console.error('Error fetching trace stats:', err);
+  }
+}
+
 onMounted(() => {
   fetchErrorStats();
+  fetchTraceStats();
   // Refresh stats every 30 seconds
-  setInterval(fetchErrorStats, 30000);
+  setInterval(() => {
+    fetchErrorStats();
+    fetchTraceStats();
+  }, 30000);
 });
 </script>
 
@@ -103,6 +122,30 @@ onMounted(() => {
                   class="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center px-1 text-xs font-bold bg-red-500 text-white rounded-full"
                 >
                   {{ unreviewedCount > 99 ? '99+' : unreviewedCount }}
+                </span>
+              </span>
+            </RouterLink>
+
+            <RouterLink
+              to="/traces"
+              :class="[
+                'px-4 py-2 rounded-lg text-sm font-medium transition-colors relative',
+                isTracesActive
+                  ? 'bg-dark-800 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-dark-800/50'
+              ]"
+            >
+              <span class="flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Traces
+                <!-- Badge for running traces -->
+                <span
+                  v-if="runningTracesCount > 0"
+                  class="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center px-1 text-xs font-bold bg-blue-500 text-white rounded-full"
+                >
+                  {{ runningTracesCount > 99 ? '99+' : runningTracesCount }}
                 </span>
               </span>
             </RouterLink>
