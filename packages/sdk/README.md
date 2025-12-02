@@ -54,6 +54,7 @@ const logger = createLogger({
   endpoint: 'http://localhost:3001/ingest',
   
   // Optional - defaults shown
+  enabled: true,                  // Enable/disable logging (default: true)
   sessionId: undefined,           // Auto-generated if not provided
   enableWebSocket: false,         // Enable WebSocket for real-time streaming
   wsEndpoint: undefined,          // Auto-derived from endpoint if not set
@@ -150,6 +151,37 @@ const logger = createLogger({
   appName: 'my-app',
   endpoint: 'http://localhost:3001/ingest',
   debug: true, // Logs will also appear in console
+});
+```
+
+### Enable/Disable Logging
+
+You can enable or disable the SDK at runtime to control when logs are sent:
+
+```typescript
+const logger = createLogger({
+  appName: 'my-app',
+  endpoint: 'http://localhost:3001/ingest',
+  enabled: true, // Default: true
+});
+
+// Check if logging is enabled
+logger.isEnabled(); // true
+
+// Disable logging (no network requests will be made)
+logger.disable();
+logger.info('This will NOT be sent');
+
+// Re-enable logging
+logger.enable();
+logger.info('This WILL be sent');
+
+// In debug mode, logs still appear in console even when disabled
+const debugLogger = createLogger({
+  appName: 'my-app',
+  endpoint: 'http://localhost:3001/ingest',
+  enabled: false,
+  debug: true, // Still logs to console
 });
 ```
 
@@ -253,12 +285,59 @@ const tracer = createTracer({
   
   // Optional
   sessionId: undefined,        // Auto-generated if not provided
+  enabled: true,               // Global enable/disable (default: true)
+  enableTracing: true,         // Enable traces/spans (default: true)
   debug: false,                // Log to console as well
   metadata: {},                // Default metadata for all traces
   spanTimeout: 300000,         // Auto-end spans after 5 minutes (ms)
   onError: undefined,          // Error callback
 });
 ```
+
+### Enable/Disable Tracing
+
+The Tracer supports granular control over what gets sent:
+
+```typescript
+const tracer = createTracer({
+  appName: 'my-app',
+  endpoint: 'http://localhost:3001/ingest',
+  enabled: true,        // Global enable (default: true)
+  enableTracing: true,  // Enable traces/spans (default: true)
+});
+
+// ---- Global Enable/Disable ----
+
+// Check if tracer is globally enabled
+tracer.isEnabled(); // true
+
+// Disable everything (no logs, no traces, no spans)
+tracer.disable();
+
+// Re-enable everything
+tracer.enable();
+
+// ---- Tracing-Specific Control ----
+
+// Check if tracing is enabled
+tracer.isTracingEnabled(); // true
+
+// Disable only tracing (logs via tracer.log() still work)
+tracer.disableTracing();
+
+// Now traces and spans won't be sent
+tracer.startTrace('test'); // Returns a dummy ID, nothing sent
+tracer.log('info', 'This IS still sent'); // Logs still work!
+
+// Re-enable tracing
+tracer.enableTracing();
+```
+
+This is useful for:
+- **Development vs Production**: Disable in dev, enable in prod
+- **Feature flags**: Toggle tracing based on user settings
+- **Performance**: Disable detailed tracing under high load
+- **Debugging**: Enable only logs, disable trace overhead
 
 ### Tracer API Reference
 
@@ -285,6 +364,14 @@ tracer.log(level, message, metadata?): void
 // Session
 tracer.getSessionId(): string
 tracer.setSessionId(sessionId): void
+
+// Enable/Disable
+tracer.isEnabled(): boolean                          // Check global enabled state
+tracer.enable(): void                                // Enable globally
+tracer.disable(): void                               // Disable globally
+tracer.isTracingEnabled(): boolean                   // Check if tracing is enabled
+tracer.enableTracing(): void                         // Enable traces/spans
+tracer.disableTracing(): void                        // Disable traces/spans (logs still work)
 ```
 
 ### Integration Example: Express Middleware
