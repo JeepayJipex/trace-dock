@@ -41,3 +41,13 @@ export async function runCleanup(): Promise<CleanupResult> {
   }
   return response.json();
 }
+
+export async function purgeAllData(): Promise<CleanupResult> {
+  const response = await fetch(`${API_URL}/settings/purge`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to purge data');
+  }
+  return response.json();
+}

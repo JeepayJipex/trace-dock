@@ -244,6 +244,30 @@ export class DrizzleRepository implements IRepository {
       errorGroupId = this.upsertErrorGroup(log);
     }
 
+    // Extract traceId, spanId, parentSpanId from metadata if not at root level
+    let traceId = log.traceId || null;
+    let spanId = log.spanId || null;
+    let parentSpanId = log.parentSpanId || null;
+    let cleanedMetadata = log.metadata;
+
+    if (log.metadata) {
+      if (!traceId && typeof log.metadata.traceId === 'string') {
+        traceId = log.metadata.traceId;
+      }
+      if (!spanId && typeof log.metadata.spanId === 'string') {
+        spanId = log.metadata.spanId;
+      }
+      if (!parentSpanId && typeof log.metadata.parentSpanId === 'string') {
+        parentSpanId = log.metadata.parentSpanId;
+      }
+
+      // Remove these fields from metadata to avoid duplication
+      if (log.metadata.traceId || log.metadata.spanId || log.metadata.parentSpanId) {
+        const { traceId: _t, spanId: _s, parentSpanId: _p, ...rest } = log.metadata;
+        cleanedMetadata = Object.keys(rest).length > 0 ? rest : undefined;
+      }
+    }
+
     (this.db.insert(logs).values({
       id: log.id,
       timestamp: log.timestamp,
@@ -252,13 +276,13 @@ export class DrizzleRepository implements IRepository {
       appName: log.appName,
       sessionId: log.sessionId,
       environment: JSON.stringify(log.environment),
-      metadata: log.metadata ? JSON.stringify(log.metadata) : null,
+      metadata: cleanedMetadata ? JSON.stringify(cleanedMetadata) : null,
       stackTrace: log.stackTrace || null,
       context: log.context ? JSON.stringify(log.context) : null,
       errorGroupId: errorGroupId || null,
-      traceId: log.traceId || null,
-      spanId: log.spanId || null,
-      parentSpanId: log.parentSpanId || null,
+      traceId,
+      spanId,
+      parentSpanId,
     }) as { run: () => void }).run();
 
     return { errorGroupId };
@@ -290,6 +314,9 @@ export class DrizzleRepository implements IRepository {
     }
     if (params.traceId) {
       conditions.push(eq(logs.traceId, params.traceId));
+    }
+    if (params.spanId) {
+      conditions.push(eq(logs.spanId, params.spanId));
     }
 
     // Handle free text search with LIKE (FTS is SQLite-specific, handled in subclass)
@@ -989,6 +1016,27 @@ export class DrizzleRepository implements IRepository {
       tracesDeleted,
       spansDeleted,
       errorGroupsDeleted,
+      durationMs,
+    };
+  }
+
+  purgeAllData(): CleanupResult {
+    const startTime = Date.now();
+    const { logs, traces, spans, errorGroups } = this.schema;
+
+    // Delete all data from each table
+    const logsResult = (this.db.delete(logs) as { run: () => { changes: number } }).run();
+    const spansResult = (this.db.delete(spans) as { run: () => { changes: number } }).run();
+    const tracesResult = (this.db.delete(traces) as { run: () => { changes: number } }).run();
+    const errorGroupsResult = (this.db.delete(errorGroups) as { run: () => { changes: number } }).run();
+
+    const durationMs = Date.now() - startTime;
+
+    return {
+      logsDeleted: logsResult.changes,
+      tracesDeleted: tracesResult.changes,
+      spansDeleted: spansResult.changes,
+      errorGroupsDeleted: errorGroupsResult.changes,
       durationMs,
     };
   }

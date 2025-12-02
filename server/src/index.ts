@@ -94,6 +94,16 @@ app.get('/live', upgradeWebSocket((): WSEvents => ({
 app.post('/ingest', async (c) => {
   try {
     const body = await c.req.json();
+    
+    // Debug: log received trace context
+    if (body.traceId || body.spanId) {
+      console.log('[DEBUG /ingest] Received trace context:', {
+        traceId: body.traceId,
+        spanId: body.spanId,
+        parentSpanId: body.parentSpanId,
+      });
+    }
+    
     const result = LogEntrySchema.safeParse(body);
 
     if (!result.success) {
@@ -105,6 +115,15 @@ app.post('/ingest', async (c) => {
 
     const log = result.data;
     const repo = c.get('repo');
+
+    // Debug: log what we're inserting
+    if (log.traceId || log.spanId) {
+      console.log('[DEBUG /ingest] Inserting log with trace context:', {
+        traceId: log.traceId,
+        spanId: log.spanId,
+        parentSpanId: log.parentSpanId,
+      });
+    }
 
     // Store in database
     repo.insertLog(log);
@@ -130,6 +149,8 @@ app.get('/logs', async (c) => {
       search: query.search,
       startDate: query.startDate,
       endDate: query.endDate,
+      traceId: query.traceId,
+      spanId: query.spanId,
       limit: query.limit,
       offset: query.offset,
     });
@@ -353,6 +374,8 @@ app.get('/logs-filtered', async (c) => {
       search: query.search,
       startDate: query.startDate,
       endDate: query.endDate,
+      traceId: query.traceId,
+      spanId: query.spanId,
       limit: query.limit,
       offset: query.offset,
     });
@@ -638,6 +661,18 @@ app.post('/settings/cleanup', (c) => {
     return c.json(result);
   } catch (error) {
     console.error('Error running cleanup:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Purge all data
+app.post('/settings/purge', (c) => {
+  try {
+    const repo = c.get('repo');
+    const result = repo.purgeAllData();
+    return c.json(result);
+  } catch (error) {
+    console.error('Error purging data:', error);
     return c.json({ error: 'Internal server error' }, 500);
   }
 });

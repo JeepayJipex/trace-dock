@@ -37,6 +37,7 @@ export const LogQuerySchema = z.object({
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   traceId: z.string().optional(),
+  spanId: z.string().optional(),
   limit: z.coerce.number().min(1).max(1000).default(50),
   offset: z.coerce.number().min(0).default(0),
 });

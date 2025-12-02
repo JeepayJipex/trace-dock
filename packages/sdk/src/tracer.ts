@@ -383,6 +383,18 @@ export class Tracer {
       return;
     }
 
+    // Get parentSpanId from current span context
+    let parentSpanId: string | undefined = undefined;
+    if (this.currentTraceId && this.currentSpanId) {
+      const activeTrace = this.activeTraces.get(this.currentTraceId);
+      if (activeTrace) {
+        const activeSpan = activeTrace.spans.get(this.currentSpanId);
+        if (activeSpan) {
+          parentSpanId = activeSpan.span.parentSpanId || undefined;
+        }
+      }
+    }
+
     const entry = {
       id: generateId(),
       timestamp: getTimestamp(),
@@ -397,6 +409,7 @@ export class Tracer {
       },
       traceId: this.currentTraceId || undefined,
       spanId: this.currentSpanId || undefined,
+      parentSpanId,
     };
 
     // Send to ingest endpoint

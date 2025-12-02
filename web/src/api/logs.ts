@@ -32,6 +32,8 @@ export async function getLogs(
   if (filters.search) params.set('search', filters.search);
   if (filters.startDate) params.set('startDate', filters.startDate);
   if (filters.endDate) params.set('endDate', filters.endDate);
+  if (filters.traceId) params.set('traceId', filters.traceId);
+  if (filters.spanId) params.set('spanId', filters.spanId);
   params.set('limit', limit.toString());
   params.set('offset', offset.toString());
 

@@ -85,6 +85,7 @@ export interface LogsQueryParams {
   startDate?: string;
   endDate?: string;
   traceId?: string;
+  spanId?: string;
   limit: number;
   offset: number;
 }
@@ -211,6 +212,7 @@ export interface IRepository {
   cleanupOldErrorGroups(retentionDays: number): number;
   cleanupOrphanedSpans(): number;
   runCleanup(): CleanupResult;
+  purgeAllData(): CleanupResult;
 
   // ==================== Lifecycle ====================
   close(): void;

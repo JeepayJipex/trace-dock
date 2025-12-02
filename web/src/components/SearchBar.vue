@@ -65,6 +65,24 @@ const activeFilters = computed(() => {
     });
   }
   
+  if (props.modelValue.traceId) {
+    filters.push({
+      key: 'traceId',
+      label: 'Trace',
+      value: props.modelValue.traceId.slice(0, 8) + '...',
+      color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    });
+  }
+  
+  if (props.modelValue.spanId) {
+    filters.push({
+      key: 'spanId',
+      label: 'Span',
+      value: props.modelValue.spanId.slice(0, 8) + '...',
+      color: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+    });
+  }
+  
   if (props.modelValue.startDate) {
     filters.push({
       key: 'startDate',
@@ -160,6 +178,20 @@ function setSession(sessionId: string) {
   });
 }
 
+function setTraceId(traceId: string) {
+  emit('update:modelValue', { 
+    ...props.modelValue, 
+    traceId: traceId || undefined 
+  });
+}
+
+function setSpanId(spanId: string) {
+  emit('update:modelValue', { 
+    ...props.modelValue, 
+    spanId: spanId || undefined 
+  });
+}
+
 function setDateRange(start: string, end: string) {
   emit('update:modelValue', { 
     ...props.modelValue, 
@@ -230,6 +262,10 @@ defineExpose({
       setApp(value);
     } else if (key === 'session' || key === 'sessionId') {
       setSession(value);
+    } else if (key === 'trace' || key === 'traceId') {
+      setTraceId(value);
+    } else if (key === 'span' || key === 'spanId') {
+      setSpanId(value);
     } else {
       // Add to search as key:value
       const newSearch = searchInput.value 

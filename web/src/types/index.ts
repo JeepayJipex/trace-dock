@@ -22,6 +22,8 @@ export interface LogEntry {
   stackTrace?: string;
   context?: Record<string, unknown>;
   errorGroupId?: string;
+  traceId?: string;
+  spanId?: string;
 }
 
 export interface LogsResponse {
@@ -42,6 +44,8 @@ export interface LogFilters {
   search?: string;
   startDate?: string;
   endDate?: string;
+  traceId?: string;
+  spanId?: string;
 }
 
 export interface StatsResponse {

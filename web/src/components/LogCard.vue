@@ -165,6 +165,36 @@ function handleFilterClick(event: MouseEvent, key: string, value: string) {
             <span class="text-dark-500">•</span>
             <span class="text-gray-600">{{ log.environment.type }}</span>
             
+            <!-- Trace ID indicator -->
+            <template v-if="log.traceId">
+              <span class="text-dark-500">•</span>
+              <button 
+                @click="(e) => handleFilterClick(e, 'traceId', log.traceId!)"
+                class="text-emerald-400 hover:text-emerald-300 hover:underline transition-colors font-mono flex items-center gap-1"
+                title="Click to filter by trace"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                {{ log.traceId.slice(0, 8) }}
+              </button>
+            </template>
+            
+            <!-- Span ID indicator -->
+            <template v-if="log.spanId">
+              <span class="text-dark-500">•</span>
+              <button 
+                @click="(e) => handleFilterClick(e, 'spanId', log.spanId!)"
+                class="text-amber-400 hover:text-amber-300 hover:underline transition-colors font-mono flex items-center gap-1"
+                title="Click to filter by span"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6z" />
+                </svg>
+                {{ log.spanId.slice(0, 8) }}
+              </button>
+            </template>
+            
             <!-- Stack trace indicator -->
             <span v-if="log.stackTrace" class="text-red-400 flex items-center gap-1 ml-2">
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
