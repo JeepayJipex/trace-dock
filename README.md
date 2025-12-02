@@ -638,6 +638,67 @@ logger.error('Test error', { error: new Error('Test') });
 | `VITE_API_URL` | `/api` | API base URL |
 | `VITE_WS_URL` | Auto-detected | WebSocket URL |
 
+## 🗄️ Database Setup
+
+Trace Dock uses Drizzle ORM and supports multiple database backends. **The database is automatically initialized on first startup** - no manual migration is required.
+
+### First Time Setup
+
+1. **Choose your database** by setting environment variables:
+
+```bash
+# SQLite (default - no setup needed)
+DB_TYPE=sqlite
+DATABASE_URL=./data/trace-dock.sqlite
+
+# PostgreSQL
+DB_TYPE=postgresql
+DATABASE_URL=postgres://user:password@localhost:5432/tracedock
+
+# MySQL
+DB_TYPE=mysql
+DATABASE_URL=mysql://user:password@localhost:3306/tracedock
+```
+
+2. **Start the server** - tables are created automatically:
+
+```bash
+pnpm dev:server
+# or
+pnpm docker:up
+```
+
+That's it! The server will create all necessary tables on startup.
+
+### ⚠️ Warning: Switching Databases
+
+**Switching between database types (e.g., SQLite → PostgreSQL) will result in data loss.**
+
+The data is stored in the specific database you configure. If you change `DB_TYPE`:
+- Your existing data stays in the old database
+- The new database starts empty
+- There is no automatic migration between database types
+
+**If you need to switch databases:**
+1. Export your data from the old database (if needed)
+2. Change the `DB_TYPE` and `DATABASE_URL` environment variables
+3. Restart the server (new empty tables will be created)
+4. Import your data (if applicable)
+
+### Development Scripts
+
+For development and advanced usage, you can use these scripts:
+
+```bash
+# Generate Drizzle migrations (for contributing)
+pnpm --filter @trace-dock/server db:generate --type=sqlite
+pnpm --filter @trace-dock/server db:generate --type=postgresql
+pnpm --filter @trace-dock/server db:generate --type=mysql
+
+# Initialize database manually (usually not needed)
+pnpm --filter @trace-dock/server db:setup --type=sqlite
+```
+
 ## 🗄️ Database Configuration
 
 Trace Dock supports multiple database backends via Drizzle ORM:
