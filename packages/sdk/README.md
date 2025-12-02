@@ -1,6 +1,6 @@
 # @trace-dock/sdk
 
-A universal JavaScript/TypeScript logging SDK for trace-dock. Works in Node.js, browsers, and Tauri applications.
+A universal JavaScript/TypeScript logging and tracing SDK for trace-dock. Works in Node.js, browsers, and Tauri applications.
 
 ## Features
 
@@ -9,6 +9,7 @@ A universal JavaScript/TypeScript logging SDK for trace-dock. Works in Node.js, 
 - 🔍 **Stack Traces** - Automatic stack trace capture for errors and warnings
 - 🏷️ **Structured Logging** - Support for metadata and context
 - 👶 **Child Loggers** - Create child loggers with inherited context
+- 🔗 **Distributed Tracing** - Full tracing support with spans and waterfall visualization
 - ⚡ **Lightweight** - Zero dependencies, tree-shakeable
 - 📦 **TypeScript** - Full TypeScript support with type definitions
 
@@ -152,6 +153,180 @@ const logger = createLogger({
 });
 ```
 
+## Tracing
+
+The SDK includes a full-featured Tracer for distributed tracing, allowing you to track requests across services with a waterfall timeline visualization.
+
+### Basic Tracing
+
+```typescript
+import { createTracer } from '@trace-dock/sdk';
+
+const tracer = createTracer({
+  appName: 'my-api',
+  endpoint: 'http://localhost:3001/ingest',
+});
+
+// Start a trace
+const traceId = tracer.startTrace('HTTP GET /users');
+
+// Create spans for operations
+const spanId = tracer.startSpan('db.query', {
+  operationType: 'query',
+  metadata: { table: 'users' },
+});
+
+// ... perform the operation ...
+
+// End the span
+tracer.endSpan(spanId, 'completed');
+
+// End the trace
+tracer.endTrace(traceId, 'completed');
+```
+
+### Using withTrace and withSpan
+
+For cleaner code, use the wrapper functions that automatically handle errors:
+
+```typescript
+// Wrap an entire operation in a trace
+const result = await tracer.withTrace('process-order', async () => {
+  
+  // Wrap sub-operations in spans
+  const user = await tracer.withSpan('fetch-user', async () => {
+    return await db.users.findById(userId);
+  }, { operationType: 'db' });
+  
+  const payment = await tracer.withSpan('process-payment', async () => {
+    return await paymentService.charge(user, amount);
+  }, { operationType: 'http' });
+  
+  return { user, payment };
+});
+```
+
+### Nested Spans
+
+Spans automatically nest based on the current context:
+
+```typescript
+tracer.startTrace('api-request');
+
+const dbSpan = tracer.startSpan('db.transaction');
+  
+  const querySpan = tracer.startSpan('db.query.users'); // Parent: dbSpan
+  tracer.endSpan(querySpan, 'completed');
+  
+  const insertSpan = tracer.startSpan('db.insert.order'); // Parent: dbSpan
+  tracer.endSpan(insertSpan, 'completed');
+
+tracer.endSpan(dbSpan, 'completed');
+
+tracer.endTrace(tracer.getCurrentTraceId()!, 'completed');
+```
+
+### Logging Within Traces
+
+Log messages within the trace context:
+
+```typescript
+tracer.startTrace('user-registration');
+
+tracer.log('info', 'Starting user registration', { email: user.email });
+
+const spanId = tracer.startSpan('send-email');
+tracer.log('debug', 'Sending welcome email');
+tracer.endSpan(spanId, 'completed');
+
+tracer.log('info', 'User registration complete');
+tracer.endTrace(tracer.getCurrentTraceId()!, 'completed');
+```
+
+### Tracer Configuration
+
+```typescript
+const tracer = createTracer({
+  // Required
+  appName: 'my-app',
+  endpoint: 'http://localhost:3001/ingest',
+  
+  // Optional
+  sessionId: undefined,        // Auto-generated if not provided
+  debug: false,                // Log to console as well
+  metadata: {},                // Default metadata for all traces
+  spanTimeout: 300000,         // Auto-end spans after 5 minutes (ms)
+  onError: undefined,          // Error callback
+});
+```
+
+### Tracer API Reference
+
+```typescript
+// Trace management
+tracer.startTrace(name, metadata?): string           // Returns trace ID
+tracer.endTrace(traceId, status): void               // Status: 'completed' | 'error'
+
+// Span management
+tracer.startSpan(name, options?): string             // Returns span ID
+tracer.endSpan(spanId, status, metadata?): void
+
+// Wrapper functions (recommended)
+tracer.withTrace<T>(name, fn, metadata?): Promise<T>
+tracer.withSpan<T>(name, fn, options?): Promise<T>
+
+// Context
+tracer.getCurrentTraceId(): string | null
+tracer.getCurrentSpanId(): string | null
+
+// Logging within trace context
+tracer.log(level, message, metadata?): void
+
+// Session
+tracer.getSessionId(): string
+tracer.setSessionId(sessionId): void
+```
+
+### Integration Example: Express Middleware
+
+```typescript
+import express from 'express';
+import { createTracer } from '@trace-dock/sdk';
+
+const app = express();
+const tracer = createTracer({
+  appName: 'express-api',
+  endpoint: 'http://localhost:3001/ingest',
+});
+
+// Tracing middleware
+app.use((req, res, next) => {
+  const traceId = tracer.startTrace(`${req.method} ${req.path}`, {
+    url: req.url,
+    method: req.method,
+    userAgent: req.headers['user-agent'],
+  });
+  
+  req.traceId = traceId;
+  req.tracer = tracer;
+  
+  res.on('finish', () => {
+    tracer.endTrace(traceId, res.statusCode >= 400 ? 'error' : 'completed');
+  });
+  
+  next();
+});
+
+// Route with tracing
+app.get('/users/:id', async (req, res) => {
+  const user = await req.tracer.withSpan('db.findUser', async () => {
+    return await db.users.findById(req.params.id);
+  }, { operationType: 'db' });
+  
+  res.json(user);
+});
+```
+
 ## Environment Detection
 
 The SDK automatically detects the runtime environment and includes it in logs:
@@ -173,11 +348,18 @@ Full TypeScript support with exported types:
 
 ```typescript
 import type { 
+  // Logger types
   LogLevel, 
   LogEntry, 
   LoggerConfig,
   EnvironmentInfo,
-  TransportOptions 
+  TransportOptions,
+  
+  // Tracer types
+  TracerConfig,
+  Trace,
+  Span,
+  TraceStatus,
 } from '@trace-dock/sdk';
 ```
 

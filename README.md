@@ -1,14 +1,16 @@
 # 🚀 Trace Dock
 
-A complete logging solution with SDK, server, and web UI for real-time log monitoring.
+A complete logging and tracing solution with SDK, server, and web UI for real-time monitoring. Similar to Datadog, but self-hosted.
 
 ![Trace Dock](./images/trace-dock-example.png)
 
 ## ✨ Features
 
-- **📦 SDK** - JavaScript/TypeScript logger for Node.js, Browser, and Tauri
+- **📦 SDK** - JavaScript/TypeScript logger and tracer for Node.js, Browser, and Tauri
 - **🔌 Server** - High-performance API with WebSocket real-time streaming
 - **🖥️ Web UI** - Beautiful dark-themed dashboard with live updates
+- **🚨 Error Tracking** - Automatic error grouping with fingerprinting (like Sentry)
+- **🔗 Distributed Tracing** - Full tracing support with waterfall visualization (like Datadog APM)
 - **🐳 Docker** - One-command deployment with Docker Compose
 
 ## 📁 Project Structure
@@ -102,6 +104,32 @@ logger.warn('High memory usage', { usage: '85%' });
 logger.error('Database connection failed', { error: new Error('Connection refused') });
 ```
 
+### Tracing
+
+```typescript
+import { createTracer } from '@trace-dock/sdk';
+
+const tracer = createTracer({
+  endpoint: 'http://localhost:3000/ingest',
+  appName: 'my-app',
+});
+
+// Trace an entire operation
+const result = await tracer.withTrace('process-order', async () => {
+  
+  // Track sub-operations with spans
+  const user = await tracer.withSpan('fetch-user', async () => {
+    return await db.users.findById(userId);
+  }, { operationType: 'db' });
+  
+  const payment = await tracer.withSpan('charge-payment', async () => {
+    return await stripe.charges.create({ amount, customer: user.stripeId });
+  }, { operationType: 'http' });
+  
+  return { user, payment };
+});
+```
+
 ### Configuration Options
 
 ```typescript
@@ -129,6 +157,23 @@ const logger = createLogger({
   onError: (error) => {
     console.error('Logger error:', error);
   },
+});
+```
+
+### Tracer Configuration
+
+```typescript
+const tracer = createTracer({
+  // Required
+  endpoint: 'http://localhost:3000/ingest',
+  appName: 'my-app',
+  
+  // Optional
+  sessionId: 'custom-session-id',
+  debug: false,
+  metadata: {},
+  spanTimeout: 300000,  // Auto-end spans after 5 minutes
+  onError: (error) => console.error('Tracer error:', error),
 });
 ```
 
@@ -271,6 +316,155 @@ Get list of unique application names.
 #### `GET /sessions`
 Get list of session IDs.
 
+### Error Groups API
+
+#### `GET /error-groups`
+Get error groups with pagination and filtering.
+
+```bash
+curl "http://localhost:3000/error-groups?status=unreviewed&appName=my-app&limit=20"
+```
+
+Query Parameters:
+- `appName` - Filter by application name
+- `status` - Filter by status (unreviewed, reviewed, ignored, resolved)
+- `search` - Search in error messages
+- `sortBy` - Sort by field (last_seen, first_seen, occurrence_count)
+- `sortOrder` - Sort order (asc, desc)
+- `limit` - Number of results (default: 20)
+- `offset` - Pagination offset
+
+#### `GET /error-groups/stats`
+Get error group statistics.
+
+```json
+{
+  "totalGroups": 42,
+  "totalOccurrences": 1234,
+  "byStatus": { "unreviewed": 10, "reviewed": 20, "ignored": 5, "resolved": 7 },
+  "byApp": { "my-app": 30, "other-app": 12 },
+  "recentTrend": [{ "date": "2024-01-01", "count": 15 }]
+}
+```
+
+#### `GET /error-groups/:id`
+Get a single error group by ID.
+
+#### `PATCH /error-groups/:id/status`
+Update error group status.
+
+```bash
+curl -X PATCH http://localhost:3000/error-groups/uuid/status \
+  -H "Content-Type: application/json" \
+  -d '{ "status": "resolved" }'
+```
+
+#### `GET /error-groups/:id/occurrences`
+Get all log occurrences for an error group.
+
+### Traces API
+
+#### `GET /traces`
+Get traces with pagination and filtering.
+
+```bash
+curl "http://localhost:3000/traces?appName=my-app&status=completed&minDuration=100"
+```
+
+Query Parameters:
+- `appName` - Filter by application name
+- `sessionId` - Filter by session ID
+- `status` - Filter by status (running, completed, error)
+- `name` - Search by trace name
+- `minDuration` - Minimum duration in ms
+- `maxDuration` - Maximum duration in ms
+- `startDate` - Filter by start date
+- `endDate` - Filter by end date
+- `limit` - Number of results (default: 20)
+- `offset` - Pagination offset
+
+#### `GET /traces/stats`
+Get trace statistics.
+
+```json
+{
+  "totalTraces": 500,
+  "avgDurationMs": 245.5,
+  "byStatus": { "running": 2, "completed": 480, "error": 18 },
+  "byApp": { "my-app": 400, "other-app": 100 },
+  "recentTrend": [{ "date": "2024-01-01", "count": 50, "avgDuration": 230 }]
+}
+```
+
+#### `GET /traces/:id`
+Get a single trace with all spans and associated logs.
+
+```json
+{
+  "trace": { "id": "...", "name": "HTTP GET /users", "durationMs": 245, ... },
+  "spans": [
+    { "id": "...", "name": "db.query", "durationMs": 45, "parentSpanId": null, ... },
+    { "id": "...", "name": "cache.get", "durationMs": 2, "parentSpanId": "...", ... }
+  ],
+  "logs": [
+    { "id": "...", "message": "Fetching users", "traceId": "...", "spanId": "...", ... }
+  ]
+}
+```
+
+#### `POST /traces`
+Create a new trace.
+
+```bash
+curl -X POST http://localhost:3000/traces \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "process-order",
+    "appName": "my-app",
+    "sessionId": "session-123"
+  }'
+```
+
+#### `PATCH /traces/:id`
+Update a trace (end it or change status).
+
+```bash
+curl -X PATCH http://localhost:3000/traces/uuid \
+  -H "Content-Type: application/json" \
+  -d '{
+    "endTime": "2024-01-01T00:01:00.000Z",
+    "durationMs": 60000,
+    "status": "completed"
+  }'
+```
+
+#### `POST /spans`
+Create a new span within a trace.
+
+```bash
+curl -X POST http://localhost:3000/spans \
+  -H "Content-Type: application/json" \
+  -d '{
+    "traceId": "trace-uuid",
+    "name": "db.query.users",
+    "operationType": "db",
+    "parentSpanId": "parent-span-uuid"
+  }'
+```
+
+#### `PATCH /spans/:id`
+Update a span (end it or change status).
+
+```bash
+curl -X PATCH http://localhost:3000/spans/uuid \
+  -H "Content-Type: application/json" \
+  -d '{
+    "endTime": "2024-01-01T00:00:01.000Z",
+    "durationMs": 45,
+    "status": "completed"
+  }'
+```
+
 #### `WebSocket /live`
 Real-time log streaming.
 
@@ -289,7 +483,20 @@ ws.onmessage = (event) => {
 
 - **Live Mode** - Real-time log streaming via WebSocket
 - **Filtering** - Filter by level, app, session, date range, and text search
+- **Advanced Search** - Datadog-like search syntax (`level:error app:myapp key:value`)
 - **Detail View** - Expandable log entries with full metadata and stack traces
+- **Error Tracking** - Automatic error grouping with:
+  - Fingerprint-based deduplication
+  - Status management (unreviewed, reviewed, ignored, resolved)
+  - Occurrence history with charts
+  - Bulk actions for triaging
+  - Option to hide ignored errors from the main feed
+- **Distributed Tracing** - Full APM-like tracing with:
+  - Waterfall timeline visualization
+  - Nested span hierarchy
+  - Duration breakdown
+  - Associated logs per trace
+  - Status indicators (running, completed, error)
 - **Dark Theme** - Beautiful dark UI optimized for readability
 - **Responsive** - Works on desktop and mobile
 
