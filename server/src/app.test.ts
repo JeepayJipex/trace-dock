@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { SQLiteRepository } from './db/sqlite.repository';
+import { SQLiteRepository } from './db/sqlite-drizzle.repository';
 import { setRepository, closeRepository, type IRepository } from './db';
 import type { LogEntry } from './schemas';
 

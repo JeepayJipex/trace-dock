@@ -3,28 +3,26 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { env } from 'hono/adapter';
 import { LogEntrySchema, LogQuerySchema, ErrorGroupQuerySchema, UpdateErrorGroupStatusSchema } from './schemas';
-import { 
-  insertLogEntry, 
-  getLogs, 
-  getLogById, 
-  getStats, 
-  getAppNames, 
-  getSessionIds, 
-  getSearchSuggestions, 
-  getMetadataKeys,
-  getErrorGroups,
-  getErrorGroupById,
-  updateErrorGroupStatus,
-  getErrorGroupOccurrences,
-  getErrorGroupStats,
-  getLogsWithIgnoredInfo,
-} from './db';
+import { getRepository, type IRepository } from './db';
 import { wsManager } from './websocket';
 
 // Default allowed origins for development
 const DEFAULT_ORIGINS = ['http://localhost:5173', 'http://localhost:3001', 'http://127.0.0.1:5173'];
 
-const app = new Hono();
+// Context type with repository
+type Env = {
+  Variables: {
+    repo: IRepository;
+  };
+};
+
+const app = new Hono<Env>();
+
+// Inject repository into context
+app.use('*', async (c, next) => {
+  c.set('repo', getRepository());
+  await next();
+});
 
 // Dynamic CORS middleware - reads CORS_ORIGINS from environment
 // Compatible with all runtimes: Node.js, Bun, Deno, Cloudflare Workers, etc.
@@ -91,9 +89,10 @@ app.post('/ingest', async (c) => {
     }
 
     const log = result.data;
+    const repo = c.get('repo');
 
     // Store in database
-    insertLogEntry(log);
+    repo.insertLog(log);
 
     // Broadcast to WebSocket clients
     wsManager.broadcast(log);
@@ -127,7 +126,8 @@ app.get('/logs', async (c) => {
       );
     }
 
-    const logs = getLogs(result.data);
+    const repo = c.get('repo');
+    const logs = repo.getLogs(result.data);
     return c.json(logs);
   } catch (error) {
     console.error('Error fetching logs:', error);
@@ -139,7 +139,8 @@ app.get('/logs', async (c) => {
 app.get('/logs/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    const log = getLogById(id);
+    const repo = c.get('repo');
+    const log = repo.getLogById(id);
 
     if (!log) {
       return c.json({ error: 'Log not found' }, 404);
@@ -155,7 +156,8 @@ app.get('/logs/:id', async (c) => {
 // Get statistics
 app.get('/stats', async (c) => {
   try {
-    const stats = getStats();
+    const repo = c.get('repo');
+    const stats = repo.getStats();
     return c.json(stats);
   } catch (error) {
     console.error('Error fetching stats:', error);
@@ -166,7 +168,8 @@ app.get('/stats', async (c) => {
 // Get available app names
 app.get('/apps', async (c) => {
   try {
-    const apps = getAppNames();
+    const repo = c.get('repo');
+    const apps = repo.getAppNames();
     return c.json({ apps });
   } catch (error) {
     console.error('Error fetching apps:', error);
@@ -178,7 +181,8 @@ app.get('/apps', async (c) => {
 app.get('/sessions', async (c) => {
   try {
     const appName = c.req.query('appName');
-    const sessions = getSessionIds(appName);
+    const repo = c.get('repo');
+    const sessions = repo.getSessionIds(appName);
     return c.json({ sessions });
   } catch (error) {
     console.error('Error fetching sessions:', error);
@@ -190,7 +194,8 @@ app.get('/sessions', async (c) => {
 app.get('/suggestions', async (c) => {
   try {
     const prefix = c.req.query('q') || '';
-    const suggestions = getSearchSuggestions(prefix);
+    const repo = c.get('repo');
+    const suggestions = repo.getSearchSuggestions(prefix);
     return c.json({ suggestions });
   } catch (error) {
     console.error('Error fetching suggestions:', error);
@@ -201,7 +206,8 @@ app.get('/suggestions', async (c) => {
 // Get metadata keys for search help
 app.get('/metadata-keys', async (c) => {
   try {
-    const keys = getMetadataKeys();
+    const repo = c.get('repo');
+    const keys = repo.getMetadataKeys();
     return c.json({ keys });
   } catch (error) {
     console.error('Error fetching metadata keys:', error);
@@ -232,7 +238,8 @@ app.get('/error-groups', async (c) => {
       );
     }
 
-    const errorGroups = getErrorGroups(result.data);
+    const repo = c.get('repo');
+    const errorGroups = repo.getErrorGroups(result.data);
     return c.json(errorGroups);
   } catch (error) {
     console.error('Error fetching error groups:', error);
@@ -243,7 +250,8 @@ app.get('/error-groups', async (c) => {
 // Get error groups statistics
 app.get('/error-groups/stats', async (c) => {
   try {
-    const stats = getErrorGroupStats();
+    const repo = c.get('repo');
+    const stats = repo.getErrorGroupStats();
     return c.json(stats);
   } catch (error) {
     console.error('Error fetching error group stats:', error);
@@ -255,7 +263,8 @@ app.get('/error-groups/stats', async (c) => {
 app.get('/error-groups/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    const errorGroup = getErrorGroupById(id);
+    const repo = c.get('repo');
+    const errorGroup = repo.getErrorGroupById(id);
 
     if (!errorGroup) {
       return c.json({ error: 'Error group not found' }, 404);
@@ -282,7 +291,8 @@ app.patch('/error-groups/:id/status', async (c) => {
       );
     }
 
-    const updated = updateErrorGroupStatus(id, result.data.status);
+    const repo = c.get('repo');
+    const updated = repo.updateErrorGroupStatus(id, result.data.status);
     
     if (!updated) {
       return c.json({ error: 'Error group not found' }, 404);
@@ -303,12 +313,13 @@ app.get('/error-groups/:id/occurrences', async (c) => {
     const limit = parseInt(query.limit || '50', 10);
     const offset = parseInt(query.offset || '0', 10);
 
-    const errorGroup = getErrorGroupById(id);
+    const repo = c.get('repo');
+    const errorGroup = repo.getErrorGroupById(id);
     if (!errorGroup) {
       return c.json({ error: 'Error group not found' }, 404);
     }
 
-    const occurrences = getErrorGroupOccurrences(id, limit, offset);
+    const occurrences = repo.getErrorGroupOccurrences(id, limit, offset);
     return c.json(occurrences);
   } catch (error) {
     console.error('Error fetching error group occurrences:', error);
@@ -338,8 +349,9 @@ app.get('/logs-filtered', async (c) => {
       );
     }
 
+    const repo = c.get('repo');
     const excludeIgnored = query.excludeIgnored === 'true';
-    const logs = getLogsWithIgnoredInfo({ ...result.data, excludeIgnored });
+    const logs = repo.getLogsWithIgnoredInfo({ ...result.data, excludeIgnored });
     return c.json(logs);
   } catch (error) {
     console.error('Error fetching filtered logs:', error);

@@ -12,7 +12,17 @@
     "test:run": "vitest run",
     "lint": "eslint src/",
     "clean": "rm -rf dist",
-    "db:setup": "tsx src/db/setup.ts"
+    "db:setup": "tsx scripts/db-setup.ts",
+    "db:generate": "tsx scripts/db-generate.ts",
+    "db:generate:sqlite": "npx drizzle-kit generate --config=drizzle.config.sqlite.ts",
+    "db:generate:pg": "npx drizzle-kit generate --config=drizzle.config.pg.ts",
+    "db:generate:mysql": "npx drizzle-kit generate --config=drizzle.config.mysql.ts",
+    "db:migrate:sqlite": "npx drizzle-kit migrate --config=drizzle.config.sqlite.ts",
+    "db:migrate:pg": "npx drizzle-kit migrate --config=drizzle.config.pg.ts",
+    "db:migrate:mysql": "npx drizzle-kit migrate --config=drizzle.config.mysql.ts",
+    "db:studio:sqlite": "npx drizzle-kit studio --config=drizzle.config.sqlite.ts",
+    "db:studio:pg": "npx drizzle-kit studio --config=drizzle.config.pg.ts",
+    "db:studio:mysql": "npx drizzle-kit studio --config=drizzle.config.mysql.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.8.0",

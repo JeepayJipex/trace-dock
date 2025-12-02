@@ -18,3 +18,7 @@ export { mysqlTraces } from './traces';
 export { mysqlSpans } from './spans';
 export { mysqlErrorGroups } from './errorGroups';
 export { mysqlSettings } from './settings';
+
+// Unified schema utilities
+export { getSchemaForType, schemas, sqliteSchema, pgSchema, mysqlSchema } from './unified';
+export type { SchemaCollection } from './unified';

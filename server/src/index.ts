@@ -6,41 +6,24 @@ import { logger } from 'hono/logger';
 import type { WSContext, WSEvents } from 'hono/ws';
 import { LogEntrySchema, LogQuerySchema, ErrorGroupQuerySchema, UpdateErrorGroupStatusSchema, TraceQuerySchema, type LogEntry } from './schemas';
 import { 
-  insertLogEntry, 
-  getLogs, 
-  getLogById, 
-  getStats, 
-  getAppNames, 
-  getSessionIds,
-  getSearchSuggestions,
-  getMetadataKeys,
-  getErrorGroups,
-  getErrorGroupById,
-  updateErrorGroupStatus,
-  getErrorGroupOccurrences,
-  getErrorGroupStats,
-  getLogsWithIgnoredInfo,
-  getTraces,
-  getTraceById,
-  getSpansByTraceId,
-  createTrace,
-  updateTrace,
-  createSpan,
-  updateSpan,
-  getTraceStats,
-  getTraceWithDetails,
-  getSettings,
-  updateSettings,
-  getStorageStats,
-  runCleanup,
+  initRepository,
+  getRepository,
   startCleanupJob,
   restartCleanupJob,
+  type IRepository,
   type Trace,
   type Span,
   type RetentionSettings,
 } from './db';
 
-const app = new Hono();
+// Context type with repository
+type Env = {
+  Variables: {
+    repo: IRepository;
+  };
+};
+
+const app = new Hono<Env>();
 
 // WebSocket setup
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
@@ -60,6 +43,12 @@ function broadcastLog(log: LogEntry) {
     }
   }
 }
+
+// Inject repository into context
+app.use('*', async (c, next) => {
+  c.set('repo', getRepository());
+  await next();
+});
 
 // Middleware
 app.use('*', cors({
@@ -115,9 +104,10 @@ app.post('/ingest', async (c) => {
     }
 
     const log = result.data;
+    const repo = c.get('repo');
 
     // Store in database
-    insertLogEntry(log);
+    repo.insertLog(log);
 
     // Broadcast to WebSocket clients
     broadcastLog(log);
@@ -151,7 +141,8 @@ app.get('/logs', async (c) => {
       );
     }
 
-    const logs = getLogs(result.data);
+    const repo = c.get('repo');
+    const logs = repo.getLogs(result.data);
     return c.json(logs);
   } catch (error) {
     console.error('Error fetching logs:', error);
@@ -163,7 +154,8 @@ app.get('/logs', async (c) => {
 app.get('/logs/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    const log = getLogById(id);
+    const repo = c.get('repo');
+    const log = repo.getLogById(id);
 
     if (!log) {
       return c.json({ error: 'Log not found' }, 404);
@@ -179,7 +171,8 @@ app.get('/logs/:id', async (c) => {
 // Get statistics
 app.get('/stats', async (c) => {
   try {
-    const stats = getStats();
+    const repo = c.get('repo');
+    const stats = repo.getStats();
     return c.json(stats);
   } catch (error) {
     console.error('Error fetching stats:', error);
@@ -190,7 +183,8 @@ app.get('/stats', async (c) => {
 // Get available app names
 app.get('/apps', async (c) => {
   try {
-    const apps = getAppNames();
+    const repo = c.get('repo');
+    const apps = repo.getAppNames();
     return c.json({ apps });
   } catch (error) {
     console.error('Error fetching apps:', error);
@@ -202,7 +196,8 @@ app.get('/apps', async (c) => {
 app.get('/sessions', async (c) => {
   try {
     const appName = c.req.query('appName');
-    const sessions = getSessionIds(appName);
+    const repo = c.get('repo');
+    const sessions = repo.getSessionIds(appName);
     return c.json({ sessions });
   } catch (error) {
     console.error('Error fetching sessions:', error);
@@ -214,7 +209,8 @@ app.get('/sessions', async (c) => {
 app.get('/suggestions', async (c) => {
   try {
     const prefix = c.req.query('q') || '';
-    const suggestions = getSearchSuggestions(prefix);
+    const repo = c.get('repo');
+    const suggestions = repo.getSearchSuggestions(prefix);
     return c.json({ suggestions });
   } catch (error) {
     console.error('Error fetching suggestions:', error);
@@ -225,7 +221,8 @@ app.get('/suggestions', async (c) => {
 // Get metadata keys for search help
 app.get('/metadata-keys', async (c) => {
   try {
-    const keys = getMetadataKeys();
+    const repo = c.get('repo');
+    const keys = repo.getMetadataKeys();
     return c.json({ keys });
   } catch (error) {
     console.error('Error fetching metadata keys:', error);
@@ -256,7 +253,8 @@ app.get('/error-groups', async (c) => {
       );
     }
 
-    const errorGroups = getErrorGroups(result.data);
+    const repo = c.get('repo');
+    const errorGroups = repo.getErrorGroups(result.data);
     return c.json(errorGroups);
   } catch (error) {
     console.error('Error fetching error groups:', error);
@@ -267,7 +265,8 @@ app.get('/error-groups', async (c) => {
 // Get error groups statistics - MUST be before /error-groups/:id
 app.get('/error-groups/stats', async (c) => {
   try {
-    const stats = getErrorGroupStats();
+    const repo = c.get('repo');
+    const stats = repo.getErrorGroupStats();
     return c.json(stats);
   } catch (error) {
     console.error('Error fetching error group stats:', error);
@@ -279,7 +278,8 @@ app.get('/error-groups/stats', async (c) => {
 app.get('/error-groups/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    const errorGroup = getErrorGroupById(id);
+    const repo = c.get('repo');
+    const errorGroup = repo.getErrorGroupById(id);
 
     if (!errorGroup) {
       return c.json({ error: 'Error group not found' }, 404);
@@ -306,7 +306,8 @@ app.patch('/error-groups/:id/status', async (c) => {
       );
     }
 
-    const updated = updateErrorGroupStatus(id, result.data.status);
+    const repo = c.get('repo');
+    const updated = repo.updateErrorGroupStatus(id, result.data.status);
     
     if (!updated) {
       return c.json({ error: 'Error group not found' }, 404);
@@ -327,12 +328,13 @@ app.get('/error-groups/:id/occurrences', async (c) => {
     const limit = parseInt(query.limit || '50', 10);
     const offset = parseInt(query.offset || '0', 10);
 
-    const errorGroup = getErrorGroupById(id);
+    const repo = c.get('repo');
+    const errorGroup = repo.getErrorGroupById(id);
     if (!errorGroup) {
       return c.json({ error: 'Error group not found' }, 404);
     }
 
-    const occurrences = getErrorGroupOccurrences(id, limit, offset);
+    const occurrences = repo.getErrorGroupOccurrences(id, limit, offset);
     return c.json(occurrences);
   } catch (error) {
     console.error('Error fetching error group occurrences:', error);
@@ -362,8 +364,9 @@ app.get('/logs-filtered', async (c) => {
       );
     }
 
+    const repo = c.get('repo');
     const excludeIgnored = query.excludeIgnored === 'true';
-    const logs = getLogsWithIgnoredInfo({ ...result.data, excludeIgnored });
+    const logs = repo.getLogsWithIgnoredInfo({ ...result.data, excludeIgnored });
     return c.json(logs);
   } catch (error) {
     console.error('Error fetching filtered logs:', error);
@@ -397,8 +400,9 @@ app.get('/traces', async (c) => {
       );
     }
 
+    const repo = c.get('repo');
     // Map schema params to DB params
-    const traces = getTraces({
+    const traces = repo.getTraces({
       appName: result.data.serviceName,
       name: result.data.operationName,
       status: result.data.status as 'running' | 'completed' | 'error' | undefined,
@@ -419,7 +423,8 @@ app.get('/traces', async (c) => {
 // Get trace statistics - MUST be before /traces/:id
 app.get('/traces/stats', async (c) => {
   try {
-    const stats = getTraceStats();
+    const repo = c.get('repo');
+    const stats = repo.getTraceStats();
     return c.json(stats);
   } catch (error) {
     console.error('Error fetching trace stats:', error);
@@ -431,7 +436,8 @@ app.get('/traces/stats', async (c) => {
 app.get('/traces/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    const traceDetails = getTraceWithDetails(id);
+    const repo = c.get('repo');
+    const traceDetails = repo.getTraceWithDetails(id);
 
     if (!traceDetails) {
       return c.json({ error: 'Trace not found' }, 404);
@@ -448,13 +454,14 @@ app.get('/traces/:id', async (c) => {
 app.get('/traces/:id/spans', async (c) => {
   try {
     const id = c.req.param('id');
-    const trace = getTraceById(id);
+    const repo = c.get('repo');
+    const trace = repo.getTraceById(id);
 
     if (!trace) {
       return c.json({ error: 'Trace not found' }, 404);
     }
 
-    const spans = getSpansByTraceId(id);
+    const spans = repo.getSpansByTraceId(id);
     return c.json({ spans });
   } catch (error) {
     console.error('Error fetching trace spans:', error);
@@ -466,6 +473,7 @@ app.get('/traces/:id/spans', async (c) => {
 app.post('/traces', async (c) => {
   try {
     const body = await c.req.json();
+    const repo = c.get('repo');
     
     const trace: Omit<Trace, 'spanCount' | 'errorCount'> = {
       id: body.id || crypto.randomUUID(),
@@ -479,7 +487,7 @@ app.post('/traces', async (c) => {
       metadata: body.metadata,
     };
 
-    const created = createTrace(trace);
+    const created = repo.createTrace(trace);
     return c.json(created, 201);
   } catch (error) {
     console.error('Error creating trace:', error);
@@ -492,13 +500,14 @@ app.patch('/traces/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
+    const repo = c.get('repo');
 
-    const trace = getTraceById(id);
+    const trace = repo.getTraceById(id);
     if (!trace) {
       return c.json({ error: 'Trace not found' }, 404);
     }
 
-    const updated = updateTrace(id, {
+    const updated = repo.updateTrace(id, {
       endTime: body.endTime,
       durationMs: body.durationMs,
       status: body.status,
@@ -520,6 +529,7 @@ app.patch('/traces/:id', async (c) => {
 app.post('/spans', async (c) => {
   try {
     const body = await c.req.json();
+    const repo = c.get('repo');
     
     const span: Span = {
       id: body.id || crypto.randomUUID(),
@@ -535,12 +545,12 @@ app.post('/spans', async (c) => {
     };
 
     // Validate trace exists
-    const trace = getTraceById(span.traceId);
+    const trace = repo.getTraceById(span.traceId);
     if (!trace) {
       return c.json({ error: 'Trace not found' }, 404);
     }
 
-    const created = createSpan(span);
+    const created = repo.createSpan(span);
     return c.json(created, 201);
   } catch (error) {
     console.error('Error creating span:', error);
@@ -553,8 +563,9 @@ app.patch('/spans/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
+    const repo = c.get('repo');
 
-    const updated = updateSpan(id, {
+    const updated = repo.updateSpan(id, {
       endTime: body.endTime,
       durationMs: body.durationMs,
       status: body.status,
@@ -579,7 +590,8 @@ app.patch('/spans/:id', async (c) => {
 // Get current settings
 app.get('/settings', (c) => {
   try {
-    const settings = getSettings();
+    const repo = c.get('repo');
+    const settings = repo.getSettings();
     return c.json(settings);
   } catch (error) {
     console.error('Error getting settings:', error);
@@ -591,7 +603,8 @@ app.get('/settings', (c) => {
 app.patch('/settings', async (c) => {
   try {
     const body = await c.req.json() as Partial<RetentionSettings>;
-    const updatedSettings = updateSettings(body);
+    const repo = c.get('repo');
+    const updatedSettings = repo.updateSettings(body);
     
     // Restart cleanup job if cleanup settings changed
     if (body.cleanupEnabled !== undefined || body.cleanupIntervalHours !== undefined) {
@@ -608,7 +621,8 @@ app.patch('/settings', async (c) => {
 // Get storage statistics
 app.get('/settings/stats', (c) => {
   try {
-    const stats = getStorageStats();
+    const repo = c.get('repo');
+    const stats = repo.getStorageStats();
     return c.json(stats);
   } catch (error) {
     console.error('Error getting storage stats:', error);
@@ -619,7 +633,8 @@ app.get('/settings/stats', (c) => {
 // Run manual cleanup
 app.post('/settings/cleanup', (c) => {
   try {
-    const result = runCleanup();
+    const repo = c.get('repo');
+    const result = repo.runCleanup();
     return c.json(result);
   } catch (error) {
     console.error('Error running cleanup:', error);
@@ -630,11 +645,17 @@ app.post('/settings/cleanup', (c) => {
 // Start server
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
-const server = serve({
-  fetch: app.fetch,
-  port: PORT,
-}, () => {
-  console.log(`
+// Initialize and start
+async function main() {
+  // Initialize repository first
+  await initRepository();
+  console.log('[DB] Repository initialized');
+
+  const server = serve({
+    fetch: app.fetch,
+    port: PORT,
+  }, () => {
+    console.log(`
 ╔═══════════════════════════════════════════════════════╗
 ║                     TRACE-DOCK                        ║
 ║                   Server Started                      ║
@@ -643,13 +664,16 @@ const server = serve({
 ║  WebSocket:   ws://localhost:${PORT}/live                ║
 ║  Health:      http://localhost:${PORT}/                  ║
 ╚═══════════════════════════════════════════════════════╝
-  `);
-  
-  // Start automatic cleanup job
-  startCleanupJob();
-});
+    `);
+    
+    // Start automatic cleanup job
+    startCleanupJob();
+  });
 
-// Inject WebSocket support
-injectWebSocket(server);
+  // Inject WebSocket support
+  injectWebSocket(server);
+}
+
+main().catch(console.error);
 
 export default app;
