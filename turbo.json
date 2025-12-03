@@ -24,6 +24,5 @@
     "clean": {
       "cache": false
     }
-  },
-  "dangerouslyDisablePackageManagerCheck": true
+  }
 }
