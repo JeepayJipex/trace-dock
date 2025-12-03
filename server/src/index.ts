@@ -1,10 +1,12 @@
 import { serve } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
+import { swaggerUI } from '@hono/swagger-ui';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import type { WSContext, WSEvents } from 'hono/ws';
 import { LogEntrySchema, LogQuerySchema, ErrorGroupQuerySchema, UpdateErrorGroupStatusSchema, TraceQuerySchema, type LogEntry } from './schemas';
+import { openApiSpec } from './openapi';
 import { 
   initRepository,
   getRepository,
@@ -57,6 +59,12 @@ app.use('*', cors({
   allowHeaders: ['Content-Type'],
 }));
 app.use('*', logger());
+
+// OpenAPI documentation endpoint
+app.get('/doc', (c) => c.json(openApiSpec));
+
+// Swagger UI
+app.get('/ui', swaggerUI({ url: '/doc' }));
 
 // Health check
 app.get('/', (c) => {
@@ -698,6 +706,8 @@ async function main() {
 ║  HTTP API:    http://localhost:${PORT}                   ║
 ║  WebSocket:   ws://localhost:${PORT}/live                ║
 ║  Health:      http://localhost:${PORT}/                  ║
+║  Swagger UI:  http://localhost:${PORT}/ui                ║
+║  OpenAPI:     http://localhost:${PORT}/doc               ║
 ╚═══════════════════════════════════════════════════════╝
     `);
     

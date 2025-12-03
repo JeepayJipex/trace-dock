@@ -1,0 +1,1 @@
+export { openApiSpec } from './spec';
