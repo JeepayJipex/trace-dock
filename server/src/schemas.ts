@@ -13,7 +13,7 @@ export const EnvironmentInfoSchema = z.object({
 });
 
 export const LogEntrySchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   timestamp: z.iso.datetime(),
   level: LogLevelSchema,
   message: z.string(),
@@ -47,7 +47,7 @@ export const ErrorGroupStatusSchema = z.enum(['unreviewed', 'reviewed', 'ignored
 
 // Error group schema
 export const ErrorGroupSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   fingerprint: z.string(),
   message: z.string(),
   appName: z.string(),
@@ -77,7 +77,7 @@ export const TraceStatusSchema = z.enum(['ok', 'error', 'unset']);
 
 // Span schema
 export const SpanSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   traceId: z.string(),
   spanId: z.string(),
   parentSpanId: z.string().nullable(),
