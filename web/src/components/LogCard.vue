@@ -122,7 +122,7 @@ function handleFilterClick(event: MouseEvent, key: string, value: string) {
           <!-- Line 1: Level badge, Message, Timestamp -->
           <div class="flex items-center gap-3 flex-wrap">
             <button
-              @click="(e: Event) => handleFilterClick(e, 'level', log.level)"
+              @click="(e: MouseEvent) => handleFilterClick(e, 'level', log.level)"
               :class="[
                 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium uppercase transition-colors',
                 levelConfig.badgeClass
@@ -148,7 +148,7 @@ function handleFilterClick(event: MouseEvent, key: string, value: string) {
           <!-- Line 2: App, Session, Environment, Tags -->
           <div class="flex items-center gap-2 mt-1.5 text-xs flex-wrap">
             <button 
-              @click="(e: Event) => handleFilterClick(e, 'appName', log.appName)"
+              @click="(e: MouseEvent) => handleFilterClick(e, 'appName', log.appName)"
               :class="[appColor.text, 'font-medium hover:underline transition-colors']"
               title="Click to filter by app"
             >
@@ -156,7 +156,7 @@ function handleFilterClick(event: MouseEvent, key: string, value: string) {
             </button>
             <span class="text-dark-500">•</span>
             <button 
-              @click="(e: Event) => handleFilterClick(e, 'sessionId', log.sessionId)"
+              @click="(e: MouseEvent) => handleFilterClick(e, 'sessionId', log.sessionId)"
               class="text-gray-500 hover:text-gray-300 hover:underline transition-colors font-mono"
               title="Click to filter by session"
             >
@@ -169,7 +169,7 @@ function handleFilterClick(event: MouseEvent, key: string, value: string) {
             <template v-if="log.traceId">
               <span class="text-dark-500">•</span>
               <button 
-                @click="(e: Event) => handleFilterClick(e, 'traceId', log.traceId!)"
+                @click="(e: MouseEvent) => handleFilterClick(e, 'traceId', log.traceId!)"
                 class="text-emerald-400 hover:text-emerald-300 hover:underline transition-colors font-mono flex items-center gap-1"
                 title="Click to filter by trace"
               >
@@ -184,7 +184,7 @@ function handleFilterClick(event: MouseEvent, key: string, value: string) {
             <template v-if="log.spanId">
               <span class="text-dark-500">•</span>
               <button 
-                @click="(e: Event) => handleFilterClick(e, 'spanId', log.spanId!)"
+                @click="(e: MouseEvent) => handleFilterClick(e, 'spanId', log.spanId!)"
                 class="text-amber-400 hover:text-amber-300 hover:underline transition-colors font-mono flex items-center gap-1"
                 title="Click to filter by span"
               >
@@ -220,7 +220,7 @@ function handleFilterClick(event: MouseEvent, key: string, value: string) {
               <button
                 v-for="(value, key) in Object.entries(log.metadata).slice(0, 3)"
                 :key="key"
-                @click="(e: Event) => handleFilterClick(e, String(value[0]), String(value[1]))"
+                @click="(e: MouseEvent) => handleFilterClick(e, String(value[0]), String(value[1]))"
                 class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-dark-700/50 text-gray-400 hover:bg-dark-600/50 hover:text-gray-300 transition-colors font-mono"
                 :title="`Click to search ${value[0]}:${value[1]}`"
               >
@@ -288,7 +288,7 @@ function handleFilterClick(event: MouseEvent, key: string, value: string) {
                 <span class="text-gray-500 flex-shrink-0">{{ key }}:</span>
                 <button
                   v-if="typeof value !== 'object'"
-                  @click="(e: Event) => handleFilterClick(e, String(key), String(value))"
+                  @click="(e: MouseEvent) => handleFilterClick(e, String(key), String(value))"
                   class="text-gray-300 hover:text-blue-400 hover:underline transition-colors text-left break-all"
                   :title="`Click to search ${key}:${value}`"
                 >
