@@ -81,6 +81,7 @@ export class DrizzleRepository implements IRepository {
   }
 
   protected parseLogRow(row: Record<string, unknown>): LogEntry {
+    const sourceLocationRaw = row.sourceLocation ?? row.source_location;
     return {
       id: row.id as string,
       timestamp: String(row.timestamp),
@@ -91,6 +92,7 @@ export class DrizzleRepository implements IRepository {
       environment: typeof row.environment === 'string' ? JSON.parse(row.environment) : row.environment,
       metadata: row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : undefined,
       stackTrace: (row.stackTrace as string) || undefined,
+      sourceLocation: sourceLocationRaw ? (typeof sourceLocationRaw === 'string' ? JSON.parse(sourceLocationRaw) : sourceLocationRaw) : undefined,
       context: row.context ? (typeof row.context === 'string' ? JSON.parse(row.context) : row.context) : undefined,
       errorGroupId: (row.errorGroupId as string) || undefined,
       traceId: (row.traceId as string) || undefined,
@@ -271,6 +273,7 @@ export class DrizzleRepository implements IRepository {
       environment: JSON.stringify(log.environment),
       metadata: log.metadata ? JSON.stringify(log.metadata) : null,
       stackTrace: log.stackTrace || null,
+      sourceLocation: log.sourceLocation ? JSON.stringify(log.sourceLocation) : null,
       context: log.context ? JSON.stringify(log.context) : null,
       errorGroupId: errorGroupId || null,
       traceId,

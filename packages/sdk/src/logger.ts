@@ -2,6 +2,7 @@ import type { LoggerConfig, LogEntry, LogLevel, EnvironmentInfo } from './types'
 import { HttpTransport, WebSocketTransport } from './transport';
 import { detectEnvironment } from './environment';
 import { generateId, getTimestamp, createStackTrace, parseStackTrace } from './utils';
+import { getSourceLocation } from './source-location';
 
 /**
  * Main Logger class
@@ -161,6 +162,9 @@ export class Logger {
       return;
     }
 
+    // Capture source location (skip: Error, getSourceLocation, log, debug/info/warn/error)
+    const sourceLocation = getSourceLocation(4);
+
     const entry: LogEntry = {
       id: generateId(),
       timestamp: getTimestamp(),
@@ -174,6 +178,7 @@ export class Logger {
         ...metadata,
       },
       stackTrace,
+      sourceLocation,
     };
 
     // Send via HTTP

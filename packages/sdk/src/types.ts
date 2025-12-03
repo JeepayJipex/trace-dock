@@ -2,6 +2,13 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export type TraceStatus = 'running' | 'completed' | 'error';
 
+export interface SourceLocation {
+  file: string;
+  line: number;
+  column: number;
+  function?: string;
+}
+
 export interface LogEntry {
   id: string;
   timestamp: string;
@@ -12,6 +19,7 @@ export interface LogEntry {
   environment: EnvironmentInfo;
   metadata?: Record<string, unknown>;
   stackTrace?: string;
+  sourceLocation?: SourceLocation;
   context?: Record<string, unknown>;
   traceId?: string;
   spanId?: string;

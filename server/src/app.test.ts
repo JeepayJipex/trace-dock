@@ -7,7 +7,7 @@ import type { LogEntry } from './schemas';
 
 // Helper to create an in-memory repository for testing
 function createTestRepository(): IRepository {
-  return new SQLiteRepository(':memory:');
+  return new SQLiteRepository(':memory:', { runMigrations: true });
 }
 
 describe('Server API Routes', () => {

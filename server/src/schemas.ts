@@ -12,6 +12,13 @@ export const EnvironmentInfoSchema = z.object({
   tauriVersion: z.string().optional(),
 });
 
+export const SourceLocationSchema = z.object({
+  file: z.string(),
+  line: z.number(),
+  column: z.number(),
+  function: z.string().optional(),
+});
+
 export const LogEntrySchema = z.object({
   id: z.uuid(),
   timestamp: z.iso.datetime(),
@@ -22,6 +29,7 @@ export const LogEntrySchema = z.object({
   environment: EnvironmentInfoSchema,
   metadata: z.record(z.string(), z.unknown()).optional(),
   stackTrace: z.string().optional(),
+  sourceLocation: SourceLocationSchema.optional(),
   context: z.record(z.string(), z.unknown()).optional(),
   errorGroupId: z.string().optional(),
   traceId: z.string().optional(),
@@ -124,6 +132,7 @@ export const TraceQuerySchema = z.object({
 
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 export type EnvironmentInfo = z.infer<typeof EnvironmentInfoSchema>;
+export type SourceLocation = z.infer<typeof SourceLocationSchema>;
 export type LogEntry = z.infer<typeof LogEntrySchema>;
 export type LogQuery = z.infer<typeof LogQuerySchema>;
 export type ErrorGroupStatus = z.infer<typeof ErrorGroupStatusSchema>;

@@ -8,6 +8,13 @@
       "when": 1764665997482,
       "tag": "0000_grey_dazzler",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1764797123143,
+      "tag": "0001_known_warpath",
+      "breakpoints": true
     }
   ]
 }

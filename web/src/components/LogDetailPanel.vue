@@ -100,6 +100,33 @@ function formatStackTrace(stack: string): string[] {
         </div>
       </div>
 
+      <!-- Source Location -->
+      <div v-if="log.sourceLocation">
+        <h3 class="text-sm font-medium text-gray-400 mb-2">Source Location</h3>
+        <div class="bg-dark-800 rounded p-4">
+          <div class="flex items-center gap-4 text-sm">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+              </svg>
+              <code class="text-cyan-400">{{ log.sourceLocation.file }}</code>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-gray-500">Line:</span>
+              <code class="text-white">{{ log.sourceLocation.line }}</code>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-gray-500">Column:</span>
+              <code class="text-white">{{ log.sourceLocation.column }}</code>
+            </div>
+            <div v-if="log.sourceLocation.function" class="flex items-center gap-2">
+              <span class="text-gray-500">Function:</span>
+              <code class="text-yellow-400">{{ log.sourceLocation.function }}</code>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Stack Trace -->
       <div v-if="log.stackTrace">
         <h3 class="text-sm font-medium text-gray-400 mb-2">Stack Trace</h3>

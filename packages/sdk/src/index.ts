@@ -13,8 +13,10 @@ export type {
   Trace,
   Span,
   TraceStatus,
+  SourceLocation,
 } from './types';
 
 // Utilities
 export { detectEnvironment } from './environment';
 export { generateId, getTimestamp, parseStackTrace } from './utils';
+export { getSourceLocation, formatSourceLocation } from './source-location';

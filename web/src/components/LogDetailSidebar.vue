@@ -315,6 +315,36 @@ function handleFilterClick(key: string, value: string) {
             </div>
             <pre class="text-red-300/80 text-xs font-mono bg-dark-950 rounded-lg p-3 border border-red-500/20 max-h-32 overflow-hidden">{{ log.stackTrace.split('\n').slice(0, 4).join('\n') }}{{ log.stackTrace.split('\n').length > 4 ? '\n...' : '' }}</pre>
           </div>
+
+          <!-- Source Location (if exists) -->
+          <div v-if="log.sourceLocation">
+            <h3 class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+              <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+              </svg>
+              Source Location
+            </h3>
+            <div class="bg-dark-800/50 rounded-lg p-4 border border-dark-700/50">
+              <div class="flex flex-wrap gap-3 text-sm">
+                <div>
+                  <span class="text-gray-500 text-xs">File</span>
+                  <p class="text-cyan-400 font-mono text-sm truncate" :title="log.sourceLocation.file">{{ log.sourceLocation.file }}</p>
+                </div>
+                <div>
+                  <span class="text-gray-500 text-xs">Line</span>
+                  <p class="text-white font-mono">{{ log.sourceLocation.line }}</p>
+                </div>
+                <div>
+                  <span class="text-gray-500 text-xs">Column</span>
+                  <p class="text-white font-mono">{{ log.sourceLocation.column }}</p>
+                </div>
+                <div v-if="log.sourceLocation.function">
+                  <span class="text-gray-500 text-xs">Function</span>
+                  <p class="text-yellow-400 font-mono">{{ log.sourceLocation.function }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </template>
 
         <!-- Metadata Tab -->

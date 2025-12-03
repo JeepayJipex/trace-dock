@@ -10,6 +10,13 @@ export interface EnvironmentInfo {
   tauriVersion?: string;
 }
 
+export interface SourceLocation {
+  file: string;
+  line: number;
+  column: number;
+  function?: string;
+}
+
 export interface LogEntry {
   id: string;
   timestamp: string;
@@ -20,6 +27,7 @@ export interface LogEntry {
   environment: EnvironmentInfo;
   metadata?: Record<string, unknown>;
   stackTrace?: string;
+  sourceLocation?: SourceLocation;
   context?: Record<string, unknown>;
   errorGroupId?: string;
   traceId?: string;

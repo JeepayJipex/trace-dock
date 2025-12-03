@@ -141,7 +141,7 @@ async function setupSQLite(options: SetupOptions): Promise<void> {
   const { SQLiteRepository } = await import('../src/db/sqlite-drizzle.repository');
   
   console.log('Initializing database schema...');
-  const repo = new SQLiteRepository(absolutePath, false);
+  const repo = new SQLiteRepository(absolutePath, { runMigrations: true });
   
   // Verify by checking stats
   const stats = repo.getStorageStats();

@@ -15,6 +15,7 @@ export const sqliteLogs = sqliteTable('logs', {
   environment: text('environment').notNull(), // JSON string
   metadata: text('metadata'), // JSON string
   stackTrace: text('stack_trace'),
+  sourceLocation: text('source_location'), // JSON string
   context: text('context'), // JSON string
   errorGroupId: text('error_group_id'),
   traceId: text('trace_id'),
@@ -44,6 +45,7 @@ export const pgLogs = pgTable('logs', {
   environment: pgText('environment').notNull(), // JSON string
   metadata: pgText('metadata'), // JSON string
   stackTrace: pgText('stack_trace'),
+  sourceLocation: pgText('source_location'), // JSON string
   context: pgText('context'), // JSON string
   errorGroupId: uuid('error_group_id'),
   traceId: varchar('trace_id', { length: 255 }),
@@ -72,6 +74,7 @@ export const mysqlLogs = mysqlTable('logs', {
   environment: mysqlText('environment').notNull(), // JSON string
   metadata: mysqlText('metadata'), // JSON string
   stackTrace: mysqlText('stack_trace'),
+  sourceLocation: mysqlText('source_location'), // JSON string
   context: mysqlText('context'), // JSON string
   errorGroupId: mysqlVarchar('error_group_id', { length: 36 }),
   traceId: mysqlVarchar('trace_id', { length: 255 }),

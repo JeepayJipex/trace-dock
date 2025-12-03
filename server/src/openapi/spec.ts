@@ -882,6 +882,16 @@ export const openApiSpec = {
           tauriVersion: { type: 'string' },
         },
       },
+      SourceLocation: {
+        type: 'object',
+        required: ['file', 'line', 'column'],
+        properties: {
+          file: { type: 'string', description: 'Source file path' },
+          line: { type: 'integer', description: 'Line number in the source file' },
+          column: { type: 'integer', description: 'Column number in the source file' },
+          function: { type: 'string', description: 'Function name (if available)' },
+        },
+      },
       LogEntry: {
         type: 'object',
         required: ['id', 'timestamp', 'level', 'message', 'appName', 'sessionId', 'environment'],
@@ -895,6 +905,7 @@ export const openApiSpec = {
           environment: { $ref: '#/components/schemas/EnvironmentInfo' },
           metadata: { type: 'object', additionalProperties: true },
           stackTrace: { type: 'string' },
+          sourceLocation: { $ref: '#/components/schemas/SourceLocation' },
           context: { type: 'object', additionalProperties: true },
           errorGroupId: { type: 'string' },
           traceId: { type: 'string' },
