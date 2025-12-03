@@ -9,10 +9,11 @@ A complete logging and tracing solution with SDK, server, and web UI for real-ti
 - **📦 SDK** - JavaScript/TypeScript logger and tracer for Node.js, Browser, and Tauri
 - **🔌 Server** - High-performance API with WebSocket real-time streaming
 - **🖥️ Web UI** - Beautiful dark-themed dashboard with live updates
-- **🚨 Error Tracking** - Automatic error grouping with fingerprinting (like Sentry)
+- **� Swagger UI** - Interactive API documentation with OpenAPI 3.0 spec
+- **�🚨 Error Tracking** - Automatic error grouping with fingerprinting (like Sentry)
 - **🔗 Distributed Tracing** - Full tracing support with waterfall visualization (like Datadog APM)
-- **�️ Data Retention** - Configurable retention periods with automatic cleanup
-- **�🐳 Docker** - One-command deployment with Docker Compose
+- **🗓️ Data Retention** - Configurable retention periods with automatic cleanup
+- **🐳 Docker** - One-command deployment with Docker Compose
 
 ## 📁 Project Structure
 
@@ -74,6 +75,8 @@ pnpm docker:down
 Access the application:
 - **Web UI**: http://localhost:8080
 - **API**: http://localhost:3000
+- **Swagger UI**: http://localhost:3000/ui
+- **OpenAPI Spec**: http://localhost:3000/doc
 - **WebSocket**: ws://localhost:3000/live
 
 ## 📦 SDK Usage
@@ -256,6 +259,19 @@ logger.info('Tauri app started');
 ```
 
 ## 🔌 API Reference
+
+### API Documentation
+
+Trace Dock provides interactive API documentation via Swagger UI, powered by OpenAPI 3.0.
+
+- **Swagger UI**: http://localhost:3000/ui - Interactive API explorer to test endpoints directly
+- **OpenAPI Spec**: http://localhost:3000/doc - Raw OpenAPI 3.0 JSON specification
+
+The Swagger UI allows you to:
+- Browse all available endpoints organized by category (Logs, Traces, Error Groups, Settings)
+- View request/response schemas with examples
+- Test API calls directly from the browser
+- Download the OpenAPI spec for code generation
 
 ### Server Endpoints
 
