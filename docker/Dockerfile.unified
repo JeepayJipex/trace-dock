@@ -63,6 +63,10 @@ COPY server/ ./server/
 WORKDIR /build/server
 RUN pnpm build
 
+# Prune dev dependencies and keep only production deps
+WORKDIR /build
+RUN pnpm prune --prod
+
 # ============================================
 # Stage 3: Production image
 # ============================================
@@ -95,16 +99,24 @@ WORKDIR /app
 # Install pnpm for running db setup script
 RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
 
-# Copy server build and production dependencies
+# Copy workspace files for proper module resolution
+COPY --from=server-builder /build/package.json ./
+COPY --from=server-builder /build/pnpm-workspace.yaml ./
+COPY --from=server-builder /build/node_modules ./node_modules
+
+# Copy server build and dependencies
 COPY --from=server-builder /build/server/dist ./server/dist
 COPY --from=server-builder /build/server/package.json ./server/
 COPY --from=server-builder /build/server/drizzle ./server/drizzle
-COPY --from=server-builder /build/node_modules ./node_modules
+COPY --from=server-builder /build/server/node_modules ./server/node_modules
 
 # Copy server source files needed for db setup script
 COPY server/scripts ./server/scripts
 COPY server/src ./server/src
 COPY server/tsconfig.json ./server/
+COPY server/drizzle.config.sqlite.ts ./server/
+COPY server/drizzle.config.pg.ts ./server/
+COPY server/drizzle.config.mysql.ts ./server/
 
 # Copy web build
 COPY --from=web-builder /build/web/dist ./web/dist
