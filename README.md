@@ -52,11 +52,30 @@ pnpm install
 pnpm dev
 
 # Or start individually
-pnpm dev:server  # Server on http://localhost:3000
+pnpm dev:server  # Server on http://localhost:3001
 pnpm dev:web     # Web UI on http://localhost:5173
 ```
 
 ### Docker Deployment
+
+#### Option 1: Unified Image (Recommended)
+
+The easiest way to deploy Trace-Dock is using the unified Docker image that includes both the web UI and server:
+
+```bash
+# Quick start with SQLite
+docker run -d \
+  --name trace-dock \
+  -p 8080:80 \
+  -v trace-dock-data:/app/data \
+  jeepayjipex/trace-dock:latest
+```
+
+Access the application at **http://localhost:8080**
+
+For more options (PostgreSQL, MySQL, etc.), see the [Docker README](./docker/DOCKER_README.md).
+
+#### Option 2: Separate Containers
 
 ```bash
 # Build and start all services
@@ -74,10 +93,10 @@ pnpm docker:down
 
 Access the application:
 - **Web UI**: http://localhost:8080
-- **API**: http://localhost:3000
-- **Swagger UI**: http://localhost:3000/ui
-- **OpenAPI Spec**: http://localhost:3000/doc
-- **WebSocket**: ws://localhost:3000/live
+- **API**: http://localhost:3001
+- **Swagger UI**: http://localhost:3001/ui
+- **OpenAPI Spec**: http://localhost:3001/doc
+- **WebSocket**: ws://localhost:3001/live
 
 ## 📦 SDK Usage
 
@@ -97,7 +116,8 @@ yarn add @trace-dock/sdk
 import { createLogger } from '@trace-dock/sdk';
 
 const logger = createLogger({
-  endpoint: 'http://localhost:3000/ingest',
+  endpoint: 'http://localhost:3001/ingest',  // Dev: direct to server
+  // endpoint: 'http://localhost:8080/api/ingest',  // Docker: through nginx proxy
   appName: 'my-app',
 });
 
@@ -114,7 +134,8 @@ logger.error('Database connection failed', { error: new Error('Connection refuse
 import { createTracer } from '@trace-dock/sdk';
 
 const tracer = createTracer({
-  endpoint: 'http://localhost:3000/ingest',
+  endpoint: 'http://localhost:3001/ingest',  // Dev: direct to server
+  // endpoint: 'http://localhost:8080/api/ingest',  // Docker: through nginx proxy
   appName: 'my-app',
 });
 
@@ -139,13 +160,13 @@ const result = await tracer.withTrace('process-order', async () => {
 ```typescript
 const logger = createLogger({
   // Required
-  endpoint: 'http://localhost:3000/ingest',
+  endpoint: 'http://localhost:3001/ingest',
   appName: 'my-app',
   
   // Optional
   sessionId: 'custom-session-id',      // Auto-generated if not provided
   enableWebSocket: true,                // Enable real-time streaming
-  wsEndpoint: 'ws://localhost:3000/live',
+  wsEndpoint: 'ws://localhost:3001/live',
   batchSize: 10,                        // Batch logs before sending
   flushInterval: 5000,                  // Flush interval in ms
   maxRetries: 3,                        // Max retry attempts
@@ -169,7 +190,7 @@ const logger = createLogger({
 ```typescript
 const tracer = createTracer({
   // Required
-  endpoint: 'http://localhost:3000/ingest',
+  endpoint: 'http://localhost:3001/ingest',
   appName: 'my-app',
   
   // Optional
@@ -228,7 +249,7 @@ logger.setSessionId('new-session-id');
 import { createLogger } from '@trace-dock/sdk';
 
 const logger = createLogger({
-  endpoint: 'http://localhost:3000/ingest',
+  endpoint: 'http://localhost:3001/ingest',
   appName: 'node-app',
 });
 
@@ -250,7 +271,7 @@ logger.info('Server started', { port: 3000 });
 import { createLogger } from '@trace-dock/sdk';
 
 const logger = createLogger({
-  endpoint: 'http://localhost:3000/ingest',
+  endpoint: 'http://localhost:3001/ingest',
   appName: 'tauri-app',
 });
 
@@ -264,8 +285,8 @@ logger.info('Tauri app started');
 
 Trace Dock provides interactive API documentation via Swagger UI, powered by OpenAPI 3.0.
 
-- **Swagger UI**: http://localhost:3000/ui - Interactive API explorer to test endpoints directly
-- **OpenAPI Spec**: http://localhost:3000/doc - Raw OpenAPI 3.0 JSON specification
+- **Swagger UI**: http://localhost:3001/ui - Interactive API explorer to test endpoints directly
+- **OpenAPI Spec**: http://localhost:3001/doc - Raw OpenAPI 3.0 JSON specification
 
 The Swagger UI allows you to:
 - Browse all available endpoints organized by category (Logs, Traces, Error Groups, Settings)
@@ -279,7 +300,7 @@ The Swagger UI allows you to:
 Ingest a new log entry.
 
 ```bash
-curl -X POST http://localhost:3000/ingest \
+curl -X POST http://localhost:3001/ingest \
   -H "Content-Type: application/json" \
   -d '{
     "id": "uuid",
@@ -297,10 +318,10 @@ Fetch logs with pagination and filtering.
 
 ```bash
 # Get all logs
-curl http://localhost:3000/logs
+curl http://localhost:3001/logs
 
 # With filters
-curl "http://localhost:3000/logs?level=error&appName=my-app&limit=100&offset=0"
+curl "http://localhost:3001/logs?level=error&appName=my-app&limit=100&offset=0"
 ```
 
 Query Parameters:
@@ -339,7 +360,7 @@ Get list of session IDs.
 Get error groups with pagination and filtering.
 
 ```bash
-curl "http://localhost:3000/error-groups?status=unreviewed&appName=my-app&limit=20"
+curl "http://localhost:3001/error-groups?status=unreviewed&appName=my-app&limit=20"
 ```
 
 Query Parameters:
@@ -371,7 +392,7 @@ Get a single error group by ID.
 Update error group status.
 
 ```bash
-curl -X PATCH http://localhost:3000/error-groups/uuid/status \
+curl -X PATCH http://localhost:3001/error-groups/uuid/status \
   -H "Content-Type: application/json" \
   -d '{ "status": "resolved" }'
 ```
@@ -385,7 +406,7 @@ Get all log occurrences for an error group.
 Get traces with pagination and filtering.
 
 ```bash
-curl "http://localhost:3000/traces?appName=my-app&status=completed&minDuration=100"
+curl "http://localhost:3001/traces?appName=my-app&status=completed&minDuration=100"
 ```
 
 Query Parameters:
@@ -433,7 +454,7 @@ Get a single trace with all spans and associated logs.
 Create a new trace.
 
 ```bash
-curl -X POST http://localhost:3000/traces \
+curl -X POST http://localhost:3001/traces \
   -H "Content-Type: application/json" \
   -d '{
     "name": "process-order",
@@ -446,7 +467,7 @@ curl -X POST http://localhost:3000/traces \
 Update a trace (end it or change status).
 
 ```bash
-curl -X PATCH http://localhost:3000/traces/uuid \
+curl -X PATCH http://localhost:3001/traces/uuid \
   -H "Content-Type: application/json" \
   -d '{
     "endTime": "2024-01-01T00:01:00.000Z",
@@ -459,7 +480,7 @@ curl -X PATCH http://localhost:3000/traces/uuid \
 Create a new span within a trace.
 
 ```bash
-curl -X POST http://localhost:3000/spans \
+curl -X POST http://localhost:3001/spans \
   -H "Content-Type: application/json" \
   -d '{
     "traceId": "trace-uuid",
@@ -473,7 +494,7 @@ curl -X POST http://localhost:3000/spans \
 Update a span (end it or change status).
 
 ```bash
-curl -X PATCH http://localhost:3000/spans/uuid \
+curl -X PATCH http://localhost:3001/spans/uuid \
   -H "Content-Type: application/json" \
   -d '{
     "endTime": "2024-01-01T00:00:01.000Z",
@@ -502,7 +523,7 @@ Get current retention and cleanup settings.
 Update retention and cleanup settings.
 
 ```bash
-curl -X PATCH http://localhost:3000/settings \
+curl -X PATCH http://localhost:3001/settings \
   -H "Content-Type: application/json" \
   -d '{
     "logsRetentionDays": 14,
@@ -543,7 +564,7 @@ Trigger manual cleanup based on current retention settings.
 Real-time log streaming.
 
 ```javascript
-const ws = new WebSocket('ws://localhost:3000/live');
+const ws = new WebSocket('ws://localhost:3001/live');
 
 ws.onmessage = (event) => {
   const { type, data } = JSON.parse(event.data);
@@ -624,7 +645,7 @@ pnpm test:web      # Web tests (19 tests)
 node -e "
 const { createLogger } = require('./packages/sdk/dist');
 const logger = createLogger({
-  endpoint: 'http://localhost:3000/ingest',
+  endpoint: 'http://localhost:3001/ingest',
   appName: 'test'
 });
 logger.info('Test log');
@@ -801,7 +822,7 @@ DB_TYPE=sqlite
 # DATABASE_URL=postgres://user:pass@host:5432/tracedock
 
 # CORS origins
-CORS_ORIGINS=http://localhost:8080,http://localhost:3000
+CORS_ORIGINS=http://localhost:8080,http://localhost:3001
 ```
 
 ### Docker Compose with PostgreSQL

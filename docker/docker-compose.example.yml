@@ -1,0 +1,122 @@
+# =============================================================================
+# Trace-Dock Docker Compose Example
+# =============================================================================
+# This is an example docker-compose.yml file for end users.
+# Copy this file to your project and customize as needed.
+#
+# Usage:
+#   docker-compose -f docker-compose.example.yml up -d
+#
+# Access the web UI at: http://localhost:8080
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # Trace-Dock - All-in-one observability platform
+  # ===========================================================================
+  trace-dock:
+    image: jeepayjipex/trace-dock:latest
+    container_name: trace-dock
+    ports:
+      # Web UI accessible on port 8080
+      - "${TRACE_DOCK_PORT:-8080}:80"
+    volumes:
+      # Persistent data storage for SQLite and other data
+      - trace-dock-data:/app/data
+    environment:
+      # -----------------------------------------------------------------------
+      # Database Configuration
+      # -----------------------------------------------------------------------
+      # Database type: sqlite (default), postgresql, mysql
+      - DB_TYPE=${DB_TYPE:-sqlite}
+      
+      # Database URL - for SQLite, this is the file path
+      # For PostgreSQL: postgres://user:password@host:5432/dbname
+      # For MySQL: mysql://user:password@host:3306/dbname
+      - DATABASE_URL=${DATABASE_URL:-/app/data/trace-dock.sqlite}
+      
+      # -----------------------------------------------------------------------
+      # Application Settings
+      # -----------------------------------------------------------------------
+      # Run database migrations on startup (recommended: true)
+      - RUN_MIGRATIONS=${RUN_MIGRATIONS:-true}
+      
+      # Enable database debug logging
+      - DB_DEBUG=${DB_DEBUG:-false}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  trace-dock-data:
+    driver: local
+
+# =============================================================================
+# ALTERNATIVE CONFIGURATIONS
+# =============================================================================
+# Uncomment the sections below for different database configurations.
+
+# -----------------------------------------------------------------------------
+# PostgreSQL Configuration
+# -----------------------------------------------------------------------------
+# To use PostgreSQL:
+# 1. Uncomment the 'db' service below
+# 2. Change DB_TYPE to 'postgresql' in trace-dock service
+# 3. Set DATABASE_URL to 'postgres://tracedock:password@db:5432/tracedock'
+# 4. Add depends_on to trace-dock service
+#
+#   db:
+#     image: postgres:16-alpine
+#     container_name: trace-dock-db
+#     environment:
+#       POSTGRES_USER: tracedock
+#       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+#       POSTGRES_DB: tracedock
+#     volumes:
+#       - postgres-data:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U tracedock"]
+#       interval: 5s
+#       timeout: 5s
+#       retries: 5
+#     restart: unless-stopped
+#
+# Add to volumes:
+#   postgres-data:
+#     driver: local
+
+# -----------------------------------------------------------------------------
+# MySQL Configuration
+# -----------------------------------------------------------------------------
+# To use MySQL:
+# 1. Uncomment the 'db' service below
+# 2. Change DB_TYPE to 'mysql' in trace-dock service
+# 3. Set DATABASE_URL to 'mysql://tracedock:password@db:3306/tracedock'
+# 4. Add depends_on to trace-dock service
+#
+#   db:
+#     image: mysql:8
+#     container_name: trace-dock-db
+#     environment:
+#       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+#       MYSQL_DATABASE: tracedock
+#       MYSQL_USER: tracedock
+#       MYSQL_PASSWORD: ${DB_PASSWORD:-changeme}
+#     volumes:
+#       - mysql-data:/var/lib/mysql
+#     healthcheck:
+#       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+#       interval: 5s
+#       timeout: 5s
+#       retries: 5
+#     restart: unless-stopped
+#
+# Add to volumes:
+#   mysql-data:
+#     driver: local

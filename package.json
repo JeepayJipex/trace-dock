@@ -21,7 +21,10 @@
     "clean": "turbo run clean && rm -rf node_modules .turbo",
     "docker:up": "docker-compose up -d --build",
     "docker:down": "docker-compose down",
-    "docker:logs": "docker-compose logs -f"
+    "docker:logs": "docker-compose logs -f",
+    "docker:build": "docker build -f docker/Dockerfile.unified -t trace-dock:local .",
+    "docker:run": "docker run -it --rm -p 8080:80 -v trace-dock-data:/app/data trace-dock:local",
+    "docker:push": "docker tag trace-dock:local jeepayjipex/trace-dock:latest && docker push jeepayjipex/trace-dock:latest"
   },
   "devDependencies": {
     "turbo": "^2.3.0",

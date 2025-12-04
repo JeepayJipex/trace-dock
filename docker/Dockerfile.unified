@@ -1,0 +1,146 @@
+# ============================================
+# Trace-Dock Unified Docker Image
+# Combines web UI and server in a single container
+# ============================================
+
+# ============================================
+# Stage 1: Build the web application
+# ============================================
+FROM node:20-alpine AS web-builder
+
+WORKDIR /build
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+
+# Copy workspace configuration files
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.json ./
+
+# Copy package.json files for all workspaces
+COPY packages/sdk/package.json ./packages/sdk/
+COPY server/package.json ./server/
+COPY web/package.json ./web/
+
+# Install all dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source files
+COPY packages/sdk/ ./packages/sdk/
+COPY server/ ./server/
+COPY web/ ./web/
+
+# Build web app with API URL pointing to nginx proxy
+WORKDIR /build/web
+ENV VITE_API_BASE_URL=/api
+RUN pnpm build
+
+# ============================================
+# Stage 2: Build the server application
+# ============================================
+FROM node:20-alpine AS server-builder
+
+WORKDIR /build
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+
+# Copy workspace configuration files
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.json ./
+
+# Copy package.json files for all workspaces
+COPY packages/sdk/package.json ./packages/sdk/
+COPY server/package.json ./server/
+COPY web/package.json ./web/
+
+# Install all dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source files
+COPY packages/sdk/ ./packages/sdk/
+COPY server/ ./server/
+
+# Build server
+WORKDIR /build/server
+RUN pnpm build
+
+# ============================================
+# Stage 3: Production image
+# ============================================
+FROM node:20-alpine AS production
+
+# Build arguments for labels
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
+
+# Labels
+LABEL org.opencontainers.image.title="Trace-Dock" \
+      org.opencontainers.image.description="A unified observability platform for traces, logs, and metrics" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.vendor="JeepayJipex" \
+      org.opencontainers.image.source="https://github.com/JeepayJipex/trace-dock" \
+      org.opencontainers.image.licenses="MIT"
+
+# Install nginx, supervisor, and required tools
+RUN apk add --no-cache nginx supervisor wget
+
+# Create app user for security
+RUN addgroup -g 1001 -S tracedock && \
+    adduser -S tracedock -u 1001 -G tracedock
+
+WORKDIR /app
+
+# Install pnpm for running db setup script
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+
+# Copy server build and production dependencies
+COPY --from=server-builder /build/server/dist ./server/dist
+COPY --from=server-builder /build/server/package.json ./server/
+COPY --from=server-builder /build/server/drizzle ./server/drizzle
+COPY --from=server-builder /build/node_modules ./node_modules
+
+# Copy server source files needed for db setup script
+COPY server/scripts ./server/scripts
+COPY server/src ./server/src
+COPY server/tsconfig.json ./server/
+
+# Copy web build
+COPY --from=web-builder /build/web/dist ./web/dist
+
+# Copy Docker configuration files
+COPY docker/nginx.conf /etc/nginx/nginx.conf
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY docker/entrypoint.sh /entrypoint.sh
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/data /var/log/supervisor /run/nginx /var/lib/nginx/tmp && \
+    chown -R tracedock:tracedock /app/data /var/log/supervisor && \
+    chown -R nginx:nginx /var/lib/nginx
+
+# Make entrypoint executable
+RUN chmod +x /entrypoint.sh
+
+# Environment variables with sensible defaults
+ENV NODE_ENV=production \
+    PORT=3000 \
+    DB_TYPE=sqlite \
+    DATABASE_URL=/app/data/trace-dock.sqlite \
+    DATA_DIR=/app/data \
+    DB_DEBUG=false \
+    RUN_MIGRATIONS=true
+
+# Expose ports
+# 80 - Web UI (nginx)
+# 3000 - API Server (internal, proxied via nginx at /api)
+EXPOSE 80 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget -qO- http://localhost/health || exit 1
+
+# Volume for persistent data
+VOLUME ["/app/data"]
+
+ENTRYPOINT ["/entrypoint.sh"]
