@@ -279,7 +279,7 @@ export class DrizzleRepository implements IRepository {
       traceId,
       spanId,
       parentSpanId,
-    }) as { run: () => void }).run();
+    }).onConflictDoNothing() as { run: () => void }).run();
 
     return { errorGroupId };
   }
@@ -708,7 +708,7 @@ export class DrizzleRepository implements IRepository {
       durationMs: trace.durationMs,
       status: trace.status,
       metadata: trace.metadata ? JSON.stringify(trace.metadata) : null,
-    }) as { run: () => void }).run();
+    }).onConflictDoNothing() as { run: () => void }).run();
 
     return { ...trace, spanCount: 0, errorCount: 0 };
   }
@@ -816,7 +816,7 @@ export class DrizzleRepository implements IRepository {
       durationMs: span.durationMs,
       status: span.status,
       metadata: span.metadata ? JSON.stringify(span.metadata) : null,
-    }) as { run: () => void }).run();
+    }).onConflictDoNothing() as { run: () => void }).run();
 
     // Update trace span count
     (this.db
