@@ -1,6 +1,6 @@
 import type { TracesResponse, TraceWithDetails, TraceFilters, TraceStats } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 export async function getTraces(filters: TraceFilters & { limit?: number; offset?: number } = {}): Promise<TracesResponse> {
   const params = new URLSearchParams();
