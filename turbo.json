@@ -23,6 +23,10 @@
     },
     "clean": {
       "cache": false
+    },
+    "db:migrate": {
+      "cache": false,
+      "env": ["DATABASE_URL"]
     }
   }
 }
