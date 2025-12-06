@@ -539,6 +539,9 @@ export class Tracer {
   }
 
   private sendTrace(trace: Trace): void {
+    if (!this._enabled) {
+      return;
+    }
     const tracesEndpoint = this.config.endpoint.replace('/ingest', '/traces');
     fetch(tracesEndpoint, {
       method: 'POST',
@@ -552,6 +555,9 @@ export class Tracer {
   }
 
   private updateTraceOnServer(traceId: string, updates: Partial<Trace>): void {
+    if (!this._enabled) {
+      return;
+    }
     const tracesEndpoint = this.config.endpoint.replace('/ingest', `/traces/${traceId}`);
     fetch(tracesEndpoint, {
       method: 'PATCH',
@@ -565,6 +571,9 @@ export class Tracer {
   }
 
   private sendSpan(span: Span): void {
+    if (!this._enabled) {
+      return;
+    }
     const spansEndpoint = this.config.endpoint.replace('/ingest', '/spans');
     fetch(spansEndpoint, {
       method: 'POST',
@@ -578,6 +587,9 @@ export class Tracer {
   }
 
   private updateSpanOnServer(spanId: string, updates: Partial<Span>): void {
+    if (!this._enabled) {
+      return;
+    }
     const spansEndpoint = this.config.endpoint.replace('/ingest', `/spans/${spanId}`);
     fetch(spansEndpoint, {
       method: 'PATCH',

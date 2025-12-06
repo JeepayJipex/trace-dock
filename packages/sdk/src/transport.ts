@@ -11,22 +11,55 @@ export class HttpTransport {
   private queue: LogEntry[] = [];
   private isProcessing = false;
   private localStorageKey = 'trace-dock-fallback-logs';
+  private _enabled: boolean;
 
   constructor(options: TransportOptions) {
     this.endpoint = options.endpoint;
     this.maxRetries = options.maxRetries;
     this.onError = options.onError;
+    this._enabled = options.enabled ?? true;
     
-    // Try to send any stored logs on init
+    // Only try to send stored logs if enabled
+    if (this._enabled) {
+      this.flushStoredLogs();
+    }
+  }
+
+  /**
+   * Enable the transport
+   */
+  enable(): void {
+    this._enabled = true;
+    // Flush any stored logs when re-enabled
     this.flushStoredLogs();
   }
 
+  /**
+   * Disable the transport
+   */
+  disable(): void {
+    this._enabled = false;
+  }
+
+  /**
+   * Check if the transport is enabled
+   */
+  isEnabled(): boolean {
+    return this._enabled;
+  }
+
   async send(log: LogEntry): Promise<boolean> {
+    if (!this._enabled) {
+      return true; // Silently skip when disabled
+    }
     this.queue.push(log);
     return this.processQueue();
   }
 
   async sendBatch(logs: LogEntry[]): Promise<boolean> {
+    if (!this._enabled) {
+      return true; // Silently skip when disabled
+    }
     this.queue.push(...logs);
     return this.processQueue();
   }

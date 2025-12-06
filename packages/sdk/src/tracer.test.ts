@@ -429,4 +429,101 @@ describe('Tracer', () => {
       expect(logEntry.message).toBe('Test log message');
     });
   });
+
+  describe('enabled flag', () => {
+    it('should not make HTTP calls when created with enabled: false', async () => {
+      const tracer = createTracer({
+        endpoint: 'http://localhost:3001/ingest',
+        appName: 'test-app',
+        enabled: false,
+      });
+
+      const traceId = tracer.startTrace('Test Trace');
+      tracer.startSpan('Test Span');
+      tracer.log('info', 'Test message');
+      tracer.endTrace(traceId);
+
+      // Wait a bit to ensure no requests are made
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(capturedRequests.traces.length).toBe(0);
+      expect(capturedRequests.spans.length).toBe(0);
+      expect(capturedRequests.ingest.length).toBe(0);
+    });
+
+    it('should not make HTTP calls after disable() is called', async () => {
+      const tracer = createTracer({
+        endpoint: 'http://localhost:3001/ingest',
+        appName: 'test-app',
+        enabled: true,
+      });
+
+      // First trace should work
+      const traceId1 = tracer.startTrace('First Trace');
+
+      await vi.waitFor(() => {
+        expect(capturedRequests.traces.length).toBe(1);
+      });
+
+      tracer.endTrace(traceId1);
+
+      await vi.waitFor(() => {
+        expect(capturedRequests.traces.length).toBe(2);
+      });
+
+      // Now disable
+      tracer.disable();
+
+      // These should not be sent
+      const traceId2 = tracer.startTrace('Second Trace');
+      tracer.startSpan('Test Span');
+      tracer.log('info', 'Test message');
+      tracer.endTrace(traceId2);
+
+      // Wait a bit to ensure no new requests are made
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Still only the first trace's requests
+      expect(capturedRequests.traces.length).toBe(2);
+      expect(capturedRequests.spans.length).toBe(0);
+      expect(capturedRequests.ingest.length).toBe(0);
+    });
+
+    it('should report correct enabled state', () => {
+      const tracer = createTracer({
+        endpoint: 'http://localhost:3001/ingest',
+        appName: 'test-app',
+        enabled: false,
+      });
+
+      expect(tracer.isEnabled()).toBe(false);
+      expect(tracer.isTracingEnabled()).toBe(false);
+
+      tracer.enable();
+      expect(tracer.isEnabled()).toBe(true);
+      expect(tracer.isTracingEnabled()).toBe(true);
+
+      tracer.disable();
+      expect(tracer.isEnabled()).toBe(false);
+      expect(tracer.isTracingEnabled()).toBe(false);
+    });
+
+    it('should still return trace/span IDs when disabled', () => {
+      const tracer = createTracer({
+        endpoint: 'http://localhost:3001/ingest',
+        appName: 'test-app',
+        enabled: false,
+      });
+
+      const traceId = tracer.startTrace('Test Trace');
+      expect(traceId).toBeDefined();
+      expect(typeof traceId).toBe('string');
+      expect(tracer.getCurrentTraceId()).toBe(traceId);
+
+      const spanId = tracer.startSpan('Test Span');
+      expect(spanId).toBeDefined();
+      expect(typeof spanId).toBe('string');
+      expect(tracer.getCurrentSpanId()).toBe(spanId);
+    });
+  });
 });

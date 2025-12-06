@@ -40,6 +40,7 @@ export class Logger {
       endpoint: this.config.endpoint,
       maxRetries: this.config.maxRetries,
       onError: this.config.onError,
+      enabled: this._enabled,
     });
 
     if (this.config.enableWebSocket && this._enabled) {
@@ -63,6 +64,7 @@ export class Logger {
    */
   enable(): void {
     this._enabled = true;
+    this.httpTransport.enable();
     if (this.config.enableWebSocket && !this.wsTransport) {
       this.wsTransport = new WebSocketTransport(
         this.config.wsEndpoint,
@@ -77,6 +79,7 @@ export class Logger {
    */
   disable(): void {
     this._enabled = false;
+    this.httpTransport.disable();
     this.wsTransport?.disconnect();
   }
 

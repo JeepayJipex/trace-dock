@@ -292,4 +292,90 @@ describe('Logger', () => {
       expect(metadata.local).toBe('data');
     });
   });
+
+  describe('enabled flag', () => {
+    it('should not make HTTP calls when created with enabled: false', async () => {
+      const logger = createLogger({
+        endpoint: 'http://localhost:3001/ingest',
+        appName: 'test-app',
+        enabled: false,
+      });
+
+      logger.info('This should not be sent');
+      logger.error('This should also not be sent');
+      logger.warn('Neither should this');
+
+      // Wait a bit to ensure no requests are made
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(capturedRequests.ingest.length).toBe(0);
+    });
+
+    it('should not make HTTP calls after disable() is called', async () => {
+      const logger = createLogger({
+        endpoint: 'http://localhost:3001/ingest',
+        appName: 'test-app',
+        enabled: true,
+      });
+
+      // First log should work
+      logger.info('This should be sent');
+
+      await vi.waitFor(() => {
+        expect(capturedRequests.ingest.length).toBe(1);
+      });
+
+      // Now disable
+      logger.disable();
+
+      // These should not be sent
+      logger.info('This should not be sent');
+      logger.error('This should also not be sent');
+
+      // Wait a bit to ensure no new requests are made
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(capturedRequests.ingest.length).toBe(1); // Still only the first one
+    });
+
+    it('should resume HTTP calls after enable() is called', async () => {
+      const logger = createLogger({
+        endpoint: 'http://localhost:3001/ingest',
+        appName: 'test-app',
+        enabled: false,
+      });
+
+      logger.info('This should not be sent');
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+      expect(capturedRequests.ingest.length).toBe(0);
+
+      // Now enable
+      logger.enable();
+
+      logger.info('This should be sent');
+
+      await vi.waitFor(() => {
+        expect(capturedRequests.ingest.length).toBe(1);
+      });
+
+      expect(capturedRequests.ingest[0].body.message).toBe('This should be sent');
+    });
+
+    it('should report correct enabled state', () => {
+      const logger = createLogger({
+        endpoint: 'http://localhost:3001/ingest',
+        appName: 'test-app',
+        enabled: false,
+      });
+
+      expect(logger.isEnabled()).toBe(false);
+
+      logger.enable();
+      expect(logger.isEnabled()).toBe(true);
+
+      logger.disable();
+      expect(logger.isEnabled()).toBe(false);
+    });
+  });
 });

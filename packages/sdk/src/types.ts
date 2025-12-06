@@ -139,4 +139,8 @@ export interface TransportOptions {
    * Callback for handling errors.
    */
   onError?: (error: Error) => void;
+  /**
+   * Whether the transport is enabled. When false, no HTTP calls will be made.
+   */
+  enabled?: boolean;
 }
